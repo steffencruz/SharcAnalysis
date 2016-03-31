@@ -1,5 +1,5 @@
-#ifndef TSHARANALYSIS_H
-#define TSHARANALYSIS_H
+#ifndef TSHARCANALYSIS_H
+#define TSHARCANALYSIS_H
 
 #include <TObject.h>
 #include <TMath.h>
