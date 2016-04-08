@@ -881,7 +881,7 @@ TH1D *TSharcAnalysis::SetSimAcceptance(int nmax, TReaction *r, const char *strip
 	}
 
 	gStyle->SetOptStat(0);
-	TCanvas *c = new TCanvas("SharcAcceptanceCurves");
+	TCanvas *c = new TCanvas("SharcAcceptanceCurves","SharcAcceptanceCurves");
 	TLegend *leglab = new TLegend(0.7,0.7,0.9,0.9);
 	leglab->AddEntry(fcovlab,"Full phi coverage","lp");
 	leglab->AddEntry(hcovlab,"Sharc coverage","lp");	
@@ -1054,8 +1054,8 @@ TH1D *TSharcAnalysis::SetLimAcceptance(const char *stripsfilename){
 
 TList *TSharcAnalysis::GetAcceptanceList(TReaction *r, const char *stripsfile){
 
-	if(r && reaction && strcmp(r->GetName(),reaction->GetName())==0 && strcmp(stripsfile,badstripsfile.c_str())==0)
-		return coveragelist;
+//	if(r && reaction && strcmp(r->GetName(),reaction->GetName())==0 && strcmp(stripsfile,badstripsfile.c_str())==0)
+//		return coveragelist;
 
 	//SetAcceptance(r,stripsfile);
 	SetSimAcceptance(10,r,stripsfile);
@@ -1119,9 +1119,7 @@ int TSharcAnalysis::BadStrip(int det, int fs, int bs){
 			maxstrips+=GetFrontStrips(dd)+GetBackStrips(dd);
 			h[dd-5] = new TH2F(Form("SharcHitPattern_Det%02i",dd),Form("SharcHitPattern_Det%02i; Back Strip; Front Strip",dd),48,0,48,24,0,24);
 			coveragelist->Add(h[dd-5]);
-			
-			continue; // simple hit pattern
-			
+						
 			for(int ff=0; ff<GetFrontStrips(dd); ff++){
 				if(badfrontstrip[dd-1][ff])
 					continue;
