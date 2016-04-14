@@ -107,6 +107,9 @@ double TSharcAnalysis::GetTargetThickness(double theta, double phi, double fract
 
 void TSharcAnalysis::InitializeSRIMInputs()	{
 
+	if(!targmat.size())
+		printf("\n\tError :  Target Material Must Be Set!\n");
+
 	p_in_targ  = new TSRIM(Form("p_in_%s.txt",targmat.c_str()),100e3,0,false);
 	p_in_si    = new TSRIM("p_in_si.txt",100e3,0,false); 
 
@@ -242,9 +245,12 @@ std::vector<double> TSharcAnalysis::GetMeasuredEnergy(TVector3 position, int det
        Eafter_deadlayer = srim_si->GetEnergy(Eafter_target,dist_deadlayer);  
   else Eafter_deadlayer = 0.0;
 
-  if(Eafter_deadlayer>srim_si->GetEmin())
-       Eafter_del = srim_si->GetEnergy(Eafter_deadlayer,dist_del);
-  else Eafter_del = 0.0;
+  if(Eafter_deadlayer>srim_si->GetEmin()){
+  	if(edel>0.0)
+  		Eafter_del = Eafter_deadlayer - edel;
+		else
+			Eafter_del = srim_si->GetEnergy(Eafter_deadlayer,dist_del);			
+	} else Eafter_del = 0.0;
 
   if(Eafter_del>srim_si->GetEmin())
        Eafter_pdeadlayer = srim_si->GetEnergy(Eafter_del,dist_pdeadlayer);  
@@ -1100,11 +1106,8 @@ int TSharcAnalysis::BadStrip(int det, int fs, int bs){
 				infile >> d >> f >> b;
 	
 				nbadstrips++;
-				if(d<13){
+				if(d>0 && d<=16){
 					if(f>-1) badfrontstrip[d-1][f] = 1;
-					else if(b>-1) badbackstrip[d-1][b] = 1;
-				}else if(d>=13){ // I manually reversed the positions of the front strips in the QQQs 
-					if(f>-1) badfrontstrip[d-1][15-f] = 1;
 					else if(b>-1) badbackstrip[d-1][b] = 1;
 				}else nbadstrips--;
 			}
