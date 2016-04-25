@@ -834,8 +834,8 @@ TH1D *TSharcAnalysis::SetSimAcceptance(int nmax, TReaction *r, const char *strip
 		cov_err = pow(variance,0.5);
 		
 		rel_err = cov_err/coverage;
-	//	if(correction>5.0 || rel_err>0.5)
-	//		continue;
+		if(correction>5.0 || rel_err>0.9)
+			continue;
 			
 		hcovlab->SetBinContent(i,coverage);
 		hcovlab->SetBinError(i,cov_err);
@@ -867,8 +867,8 @@ TH1D *TSharcAnalysis::SetSimAcceptance(int nmax, TReaction *r, const char *strip
 			cov_err = pow(variance,0.5);
 		
 			rel_err = cov_err/coverage;
-//			if(correction>5.0 || rel_err>0.5)
-//				continue;
+			if(correction>5.0 || rel_err>0.9)
+				continue;
 			
 			hcovcm->SetBinContent(i,coverage);
 			hcovcm->SetBinError(i,cov_err);
