@@ -834,8 +834,8 @@ TH1D *TSharcAnalysis::SetSimAcceptance(int nmax, TReaction *r, const char *strip
 		cov_err = pow(variance,0.5);
 		
 		rel_err = cov_err/coverage;
-		if(correction>5.0 || rel_err>0.5)
-			continue;
+	//	if(correction>5.0 || rel_err>0.5)
+	//		continue;
 			
 		hcovlab->SetBinContent(i,coverage);
 		hcovlab->SetBinError(i,cov_err);
@@ -1058,13 +1058,13 @@ TH1D *TSharcAnalysis::SetLimAcceptance(const char *stripsfilename){
 
 
 
-TList *TSharcAnalysis::GetAcceptanceList(TReaction *r, const char *stripsfile){
+TList *TSharcAnalysis::GetAcceptanceList(TReaction *r, const char *stripsfile, Int_t resolution){
 
 //	if(r && reaction && strcmp(r->GetName(),reaction->GetName())==0 && strcmp(stripsfile,badstripsfile.c_str())==0)
 //		return coveragelist;
 
 	//SetAcceptance(r,stripsfile);
-	SetSimAcceptance(10,r,stripsfile);
+	SetSimAcceptance(resolution,r,stripsfile);
 	
 	return coveragelist;	
 }

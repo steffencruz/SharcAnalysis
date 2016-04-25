@@ -62,7 +62,7 @@ class TSharcAnalysis 	{
     static TCanvas *SetAcceptance(TReaction *r=NULL,const char *stripsfile=""); //!
 		static TH1D *SetSimAcceptance(int nmax=10,TReaction *r=NULL,const char *stripsfilename="");
 		static TH1D *SetLimAcceptance(const char *stripsfilename="");
-    static TList *GetAcceptanceList(TReaction *r=NULL,const char *stripsfile=""); //! 
+    static TList *GetAcceptanceList(TReaction *r=NULL,const char *stripsfile="",Int_t resolution=10); //! 
     static double RandomizeThetaLab(int det, int fs, int bs);//! 
             
     // number of strips
