@@ -25,6 +25,10 @@
 #define D2R                       (TMath::DegToRad())
 #endif
 
+#ifndef SHCDIR
+#define SHCDIR "/Users/steffencruz/Desktop/Steffen/Work/PhD/TRIUMF/CodesAndTools/SharcAnalysis"
+#endif
+
 class TSharcAnalysis 	{
 	
 	public:
@@ -59,11 +63,13 @@ class TSharcAnalysis 	{
     static double GetOmegaMin() { return Omega_min; }; //!   
             
     // Full acceptance curves and corrections
-    static TCanvas *SetAcceptance(TReaction *r=NULL,const char *stripsfile=""); //!
-		static TH1D *SetSimAcceptance(int nmax=10,TReaction *r=NULL,const char *stripsfilename="");
-		static TH1D *SetLimAcceptance(const char *stripsfilename="");
+		static TH1D *SetAcceptance(int nmax=10,TReaction *r=NULL,const char *stripsfilename="");
     static TList *GetAcceptanceList(TReaction *r=NULL,const char *stripsfile="",Int_t resolution=10); //! 
     static double RandomizeThetaLab(int det, int fs, int bs);//! 
+    static TH1D *RebinAcceptance(TH1D *h, int binsz); //! 
+    static TH1D *MakeSin(Double_t binsz=1.0); //!
+            
+    static TH1D *SimulateAngDist(const char *sname, double &cntres, double &reserr, double t1=0.0, double t2=20.0, double counts=1e4, double cnterr=0); //!
             
     // number of strips
     static int GetFrontStrips(int det){ 	return frontstrips[det-1];		}//!
@@ -103,6 +109,7 @@ class TSharcAnalysis 	{
 		
 		// target properties
     static TVector3 GetTargetPosition()    { return position_offset; } //!
+    static TVector3 GetTargetPosError()    { return position_error ; } //!
     static double GetTargetDepth()  		   { return targetthickness; } //!       
 		static const char *GetTargetMaterial() { return targmat.c_str(); } //!    
     
@@ -122,10 +129,14 @@ class TSharcAnalysis 	{
     	
 		static void InitializeSRIMInputs();   //!
     static TSRIM *GetSRIM(char ion, std::string material); //!
+    static TReaction *GetReaction(void) { return reaction; } //!
+
 
 	private: 
 
+    static TH1D *MakeScaleHist(Double_t binsz, Double_t scale, Double_t err, const char *name);
 		static double ThetaCoverage(Double_t *x, Double_t *p);//!
+	  static void GetRid(const char *name, Bool_t delete_all = true); // removes object
 	
 		static TVector3 position_offset; //!
 		static TVector3 position_error; //!
@@ -135,7 +146,8 @@ class TSharcAnalysis 	{
     static std::string badstripsfile;	// file containing bad strips
     static Bool_t resetbadstrips;
     static UInt_t nbadstrips;
-    static TList *coveragelist;
+    static Int_t accres;            // resolution of acceptance
+    static TList *coveragelist;     // list containing acceptance results
     
 		// detector segmentation and pitches
     static int number_of_detectors;

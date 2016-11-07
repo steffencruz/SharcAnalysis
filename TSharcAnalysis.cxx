@@ -4,6 +4,8 @@
 #include <TH1.h>
 #include <TH2.h>
 #include <TStyle.h>
+#include <TROOT.h>
+#include <TSystem.h>
 
 #include <cmath>
 
@@ -20,12 +22,12 @@ TSRIM* TSharcAnalysis::a_in_targ									= 0;
 TSRIM* TSharcAnalysis::a_in_si  									= 0;
 TSRIM* TSharcAnalysis::beam_in_targ  							= 0;
 
-// segmentation and pitch sizes (warning, QQQ back pitch is angular)
+// segmentation and pitch sizes (warning, QQQ back pitch is angular [deg])
 int TSharcAnalysis::number_of_detectors   = 16;	
 int TSharcAnalysis::frontstrips[16]       = {16,16,16,16,	24,24,24,24,	24,24,24,24,	16,16,16,16};
 int TSharcAnalysis::backstrips[16]        = {24,24,24,24,	48,48,48,48,	48,48,48,48,	24,24,24,24};		
 double TSharcAnalysis::frontpitches[16]   = {2.0,2.0,2.0,2.0,	3.0,3.0,3.0,3.0,	3.0,3.0,3.0,3.0,	2.0,2.0,2.0,2.0};
-double TSharcAnalysis::backpitches[16]    = {PI/48,PI/48,PI/48,PI/48,	1.0,1.0,1.0,1.0,	1.0,1.0,1.0,1.0,	PI/48,PI/48,PI/48,PI/48}; 	
+double TSharcAnalysis::backpitches[16]    = {3.4,3.4,3.4,3.4,	1.0,1.0,1.0,1.0,	1.0,1.0,1.0,1.0,	3.4,3.4,3.4,3.4}; 	
 // various thicknesses in um
 double TSharcAnalysis::DELdeadlayers[16]  = {0.7,0.7,0.7,0.7,	0.1,0.1,0.1,0.1,	0.1,0.1,0.1,0.1,	0.7,0.7,0.7,0.7};
 double TSharcAnalysis::PADdeadlayers[16]  = {0.0,0.0,0.0,0.0,	1.0,1.0,1.0,1.0,	0.0,0.0,0.0,0.0,	0.0,0.0,0.0,0.0}; 
@@ -40,6 +42,7 @@ std::string TSharcAnalysis::targmat								= "";
 // strips and acceptances
 TReaction *TSharcAnalysis::reaction 							= 0;
 TList *TSharcAnalysis::coveragelist 							= 0;
+Int_t TSharcAnalysis::accres								 			= 0;
 std::string TSharcAnalysis::badstripsfile					= "";
 Bool_t TSharcAnalysis::resetbadstrips							= true;
 UInt_t TSharcAnalysis::nbadstrips									= 0;
@@ -305,6 +308,7 @@ TVector3 TSharcAnalysis::GetEdgePoints(int edgenum, int det, int fs, int bs) { /
 		}
 	}
 	else if(det<5 || det>12) {// QQQ
+		backpitch*=D2R; // now convert to radians
 		double rho = GetPosition(det,fs,bs).Perp();		
 		double phi = GetPosition(det,fs,bs).Phi();
 				
@@ -433,301 +437,23 @@ double TSharcAnalysis::GetSumSolidAngle(int det_min, int fs_min, int bs_min, int
 }
 
 
-TCanvas *TSharcAnalysis::SetAcceptance(TReaction *r, const char *stripsfilename){
-
-	TVector3 pos;
-	double omega, thetalab, thetacm;
-	static TH1D *hcovlab[3], *hcorlab[3], *hcorcm[3], *hcovcm[3];
-	for(int i=0; i<3; i++){
-		hcovlab[i] = 0;
-		hcorlab[i] = 0;
-		hcovcm[i] = 0;
-		hcorcm[i] = 0;
-	}					
-	TH2F *hthetaphi = 0, *homega[16];
-	Bool_t cmframe = false;
-	std::string rname="";
-	if(r){
-		reaction = r;
-		cmframe = true;
-  	rname.assign(r->GetNameFull());
-	}
-	SetBadStrips(stripsfilename); 
-
-	hcovlab[0] = new TH1D("SharcCoverageLab","SharcCoverageLab",180,0,180);
-	hcovlab[0]->SetTitle(Form("%s; Theta Lab [deg]; Coverage [sr]",hcovlab[0]->GetTitle()));
-	hcovlab[0]->SetLineColor(1);
-	coveragelist->Add(hcovlab[0]);
-	
-	hcorlab[0] = new TH1D("SharcEfficiencyCorrectionLab","SharcEfficiencyCorrectionLab",180,0,180);
-	hcorlab[0]->SetTitle(Form("%s; Theta Lab [deg]; Efficiency correction factor;",hcorlab[0]->GetTitle()));
-	hcorlab[0]->SetLineColor(1);	
-	coveragelist->Add(hcorlab[0]);	
-	
-	hthetaphi = new TH2F("SharcCoverageThetaPhi","SharcCoverageThetaPhi",180,0,180,360,-180,180);
-	hthetaphi->SetTitle(Form("%s; Theta Lab [deg]; Phi [deg]",hthetaphi->GetTitle()));
-	coveragelist->Add(hthetaphi);	
-
-	for(int det=5; det<=16; det++){
-		homega[det-1] = GetSolidAngleMatrix(det,true); // remove dead strips
-		coveragelist->Add(homega[det-1]);
-	}
-
-	if(position_error.Mag()){
-			
-		hcovlab[1] = new TH1D("SharcCoverageLab_2","SharcCoverageLab_2",180,0,180);
-		hcovlab[1]->SetTitle(Form("%s; Theta Lab [deg]; Coverage [sr]",hcovlab[1]->GetTitle()));
-		hcovlab[1]->SetLineColorAlpha(3,0.25);		
-		coveragelist->Add(hcovlab[1]);
-	
-		hcorlab[1] = new TH1D("SharcEfficiencyCorrectionLab_2","SharcEfficiencyCorrectionLab_2",180,0,180);
-		hcorlab[1]->SetTitle(Form("%s; Theta Lab [deg]; Efficiency correction factor;",hcorlab[1]->GetTitle()));
-		hcorlab[1]->SetLineColorAlpha(3,0.25);							
-		coveragelist->Add(hcorlab[1]);	
-		
-		hcovlab[2] = new TH1D("SharcCoverageLab_3","SharcCoverageLab_3",180,0,180);
-		hcovlab[2]->SetTitle(Form("%s; Theta Lab [deg]; Coverage [sr]",hcovlab[2]->GetTitle()));
-		hcovlab[2]->SetLineColorAlpha(4,0.25);				
-		coveragelist->Add(hcovlab[2]);
-	
-		hcorlab[2] = new TH1D("SharcEfficiencyCorrectionLab_3","SharcEfficiencyCorrectionLab_3",180,0,180);
-		hcorlab[2]->SetTitle(Form("%s; Theta Lab [deg]; Efficiency correction factor;",hcorlab[2]->GetTitle()));
-		hcorlab[2]->SetLineColorAlpha(4,0.25);								
-		coveragelist->Add(hcorlab[2]);
-	}	
-	
-	if(cmframe){
-		hcovcm[0] = new TH1D("SharcCoverageCm",Form("SharcCoverageCm : %s",rname.c_str()),180,0,180);
-		hcovcm[0]->SetTitle(Form("%s; Theta Cm [deg]; Coverage [sr]",hcovcm[0]->GetTitle()));
-		hcovcm[0]->SetLineColor(1);							
-		coveragelist->Add(hcovcm[0]);
-		
-		hcorcm[0] = new TH1D("SharcEfficiencyCorrectionCm",Form("SharcEfficiencyCorrectionCm : %s",rname.c_str()),180,0,180);
-		hcorcm[0]->SetTitle(Form("%s; Theta Cm [deg]; Efficiency correction factor;",hcorcm[0]->GetTitle()));
-		hcorcm[0]->SetLineColor(1);					
-		coveragelist->Add(hcorcm[0]);
-		
-		if(position_error.Mag()){
-			hcovcm[1] = new TH1D("SharcCoveragenCm_2",Form("SharcCoverageCm_2 : %s",rname.c_str()),180,0,180);
-			hcovcm[1]->SetTitle(Form("%s; Theta Cm [deg]; Coverage [sr]",hcovcm[1]->GetTitle()));
-			hcovcm[1]->SetLineColorAlpha(3,0.25);			
-			coveragelist->Add(hcovcm[1]);
-		
-			hcorcm[1] = new TH1D("SharcEfficiencyCorrectionCm_2",Form("SharcEfficiencyCorrectionCm_2 : %s",rname.c_str()),180,0,180);
-			hcorcm[1]->SetTitle(Form("%s; Theta Cm [deg]; Efficiency correction factor;",hcorcm[1]->GetTitle()));
-			hcorcm[1]->SetLineColorAlpha(3,0.25);									
-			coveragelist->Add(hcorcm[1]);
-			
-			hcovcm[2] = new TH1D("SharcCoverageCm_3",Form("SharcCoverageCm_3 : %s",rname.c_str()),180,0,180);
-			hcovcm[2]->SetTitle(Form("%s; Theta Cm [deg]; Coverage [sr]",hcovcm[2]->GetTitle()));
-			hcovcm[2]->SetLineColorAlpha(4,0.25);													
-			coveragelist->Add(hcovcm[2]);
-		
-			hcorcm[2] = new TH1D("SharcEfficiencyCorrectionCm_3",Form("SharcEfficiencyCorrectionCm_3 : %s",rname.c_str()),180,0,180);
-			hcorcm[2]->SetTitle(Form("%s; Theta Cm [deg]; Efficiency correction factor;",hcorcm[2]->GetTitle()));
-			hcorcm[2]->SetLineColorAlpha(4,0.25);													
-			coveragelist->Add(hcorcm[2]);			
-		}			
-	}
-	
-	TVector3 targ_pos = GetTargetPosition();
-	
-	// 3 extreme positions isn't really enough to investigate how acceptance changes with position
-	for(int p=0; p<3; p++){
-				
-		if(p==1 && position_error.Mag())
-			SetTargetPosition(targ_pos-position_error);
-		if(p==2 && position_error.Mag())
-			SetTargetPosition(targ_pos+position_error);
-		else if(p>0 && !position_error.Mag())
-			break;
-  	
-		for(int det=5; det<=16; det++){
-			for(int bs=0; bs<GetBackStrips(det); bs++){
-
-				if(BadStrip(det,-1,bs))
-					continue; 	
-			
-				for(int fs=0; fs<GetFrontStrips(det); fs++){
-			
-					if(BadStrip(det,fs,-1))
-						continue;
-								
-					 pos = TSharcAnalysis::GetPosition(det,fs,bs);
-					 thetalab = pos.Theta()*R2D;
-					 //omega = homega[det-1]->GetBinContent(bs+1,fs+1);
-			 			omega = GetSolidAngle(det,fs,bs);
-					 hthetaphi->Fill(thetalab,pos.Phi()*R2D);
-				 
-					 hcovlab[p]->Fill(thetalab,omega);
-					 if(cmframe){
-						 thetacm = r->ConvertThetaLabToCm(thetalab*D2R,2)*R2D;					 
-						 hcovcm[p]->Fill(thetacm,omega);
-					 }				 
-				}
-			}
-			
-		}
-		
-	}
-		
-	SetTargetPosition(targ_pos);
-		
-  TF1 *fcovlab, *fcovcm; 
-	fcovlab = new TF1("MaxThetaCoverageLab",ThetaCoverage,0,180,2);
-  fcovlab->SetParameters(2*PI*D2R,0);
-  coveragelist->Add(fcovlab);
-  
-  if(cmframe){
-    fcovcm = new TF1(Form("MaxThetaCoverageCm_%s",rname.c_str()),ThetaCoverage,0,180,2);
-	  fcovcm->SetParameters(2*PI*D2R,1);
-		coveragelist->Add(fcovcm);
-	}
-
-   // calculate correction and errors
-	double theta_val,max_cov,cov_val,cov_val1,cov_val2,cor_val,cor_val1,cor_val2,cov_err,cor_err;
-  for(int i=1; i<=180; i++){
-    
-    theta_val = hcovlab[0]->GetBinCenter(i);
-    cov_val = hcovlab[0]->GetBinContent(i);
-    max_cov = fcovlab->Eval(theta_val);
-    if(cov_val>0 && max_cov/cov_val<5.0){
-    	cor_val = max_cov/cov_val;
-      hcorlab[0]->SetBinContent(i,cor_val);
-
-      if(position_error.Mag()){
-       	cov_val1 = hcovlab[1]->GetBinContent(i);
-       	cov_val2 = hcovlab[2]->GetBinContent(i);
-				if(cov_val1>0 && max_cov/cov_val1<5.0 && cov_val2>0 && max_cov/cov_val2<5.0){
-					cor_val1 = max_cov/cov_val1;
-				  cor_val2 = max_cov/cov_val2;					 
-					hcorlab[1]->SetBinContent(i,cor_val1);
-					hcorlab[2]->SetBinContent(i,cor_val2);
-				
-					cov_err = sqrt(pow(cov_val1-cov_val,2.0)+pow(cov_val2-cov_val,2.0));
-					cor_err = sqrt(pow(cor_val1-cor_val,2.0)+pow(cor_val2-cor_val,2.0));
-					//printf("\n%i.\t cov = %4.2e +/- %4.2e [%4.2e <-> %4.2e] \t cor = %4.2e +/- %4.2e [%4.2e <-> %4.2e]",i,cov_val,cov_err,cov_val1,cov_val2,cor_val,cor_err,cor_val1,cor_val2);
-					printf("\n%i.\t relerr_cov = %4.2e \t relerr_cor = %4.2e",i,cov_err/cov_val,cor_err/cor_val);
-				  if(cov_err/cov_val>0.5 || cor_err/cor_val>0.5){
-					 	hcovlab[0]->SetBinError(i,0);				 				   
-					 	hcorlab[0]->SetBinError(i,0);			 
-					}	else {			 	
-					 	hcovlab[0]->SetBinError(i,cov_err);			 
-					 	hcorlab[0]->SetBinError(i,cor_err);			 
-					}
-				} else {
-						hcovlab[0]->SetBinContent(i,0);			 				   					 			 
-						hcorlab[0]->SetBinContent(i,0);				 
-			  }						
-			}	 
-		}	else {
-			hcovlab[0]->SetBinContent(i,0);			 				   					 			 
-			hcorlab[0]->SetBinContent(i,0);				 
-		}		
-    if(!cmframe)
-    	continue;
-    	
-
-    theta_val = hcovcm[0]->GetBinCenter(i);
-    cov_val = hcovcm[0]->GetBinContent(i);
-    max_cov = fcovcm->Eval(theta_val);
-    if(cov_val>0){
-    	cor_val = max_cov/cov_val;
-      hcorcm[0]->SetBinContent(i,cor_val);
-       
-      if(position_error.Mag()){
-       	cov_val1 = hcovcm[1]->GetBinContent(i);
-       	cov_val2 = hcovcm[2]->GetBinContent(i);
-				if(cov_val1>0 && cov_val2>0){
-					cor_val1 = max_cov/cov_val1;
-				  cor_val2 = max_cov/cov_val2;					 
-					hcorcm[1]->SetBinContent(i,cor_val1);
-					hcorcm[2]->SetBinContent(i,cor_val2);
-				
-					cov_err = sqrt(pow(cov_val1-cov_val,2.0)+pow(cov_val2-cov_val,2.0));
-					cor_err = sqrt(pow(cor_val1-cor_val,2.0)+pow(cor_val2-cor_val,2.0));
-				  if(cor_val>5.0 || cov_err/cov_val>0.5 || cor_err/cor_val>0.5){
-					 	hcovcm[0]->SetBinError(i,0);			 
-					 	hcorcm[0]->SetBinError(i,0);			 
-					}	else {			 	
-					 	hcovcm[0]->SetBinError(i,cov_err);			 
-					 	hcorcm[0]->SetBinError(i,cor_err);			 
-					}
-				 }					
-			 }	 
-		} else {
-			hcovlab[0]->SetBinContent(i,0);			 				   					 			 
-			hcorlab[0]->SetBinContent(i,0);				 
-		}					 		
-					
-  }
-
-	gStyle->SetOptStat(0);
-	TCanvas *c = new TCanvas("SharcAcceptanceCurves");
-	TLegend *leglab = new TLegend(0.7,0.7,0.9,0.9);
-	leglab->AddEntry(fcovlab,"Full phi coverage","lp");
-	leglab->AddEntry(hcovlab[0],"Sharc coverage","lp");		
-	
-	int cmint = 0;
-	if(cmframe)
-		cmint = 1;
-	
-	c->Divide(1+cmint,2);
-	c->cd(1);
-	hcovlab[0]->Draw();
-	fcovlab->Draw("same");
-	leglab->Draw();
-	c->cd(2+cmint);
-	gPad->SetGridy(1);
-	hcorlab[0]->Draw();		
-	
-	if(cmframe){
-		TLegend *legcm = new TLegend(0.7,0.7,0.9,0.9);
-		legcm->AddEntry(fcovcm,"Full phi coverage","lp");
-		legcm->AddEntry(hcovcm[0],"Sharc coverage","lp");		
-
-		c->cd(2);
-		hcovcm[0]->Draw();
-		fcovcm->Draw("same");				
-		legcm->Draw();
-		c->cd(4);
-		gPad->SetGridy(1);		
-		hcorcm[0]->Draw();
-	}
-	
-	if(position_error.Mag()){
-		c->cd(1);
-		hcovlab[1]->Draw("same");
-		hcovlab[2]->Draw("same");		
-		c->cd(2+cmint);
-		hcorlab[1]->Draw("same");
-		hcorlab[2]->Draw("same");
-		
-		if(cmframe){
-			c->cd(2);		
-			hcovcm[1]->Draw("same");
-			hcovcm[2]->Draw("same");				
-			c->cd(4);							
-			hcorcm[1]->Draw("same");
-			hcorcm[2]->Draw("same");
-		}
-	}		
-		
-	coveragelist->Add(c);
-	
-	return c;
-}
-
-
 // generates acceptance curve by simulating a set of reactions which are distributed randomly across the target(± position error)
 // and land randomly within the pixel area
-TH1D *TSharcAnalysis::SetSimAcceptance(int nmax, TReaction *r, const char *stripsfilename){
+TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfilename){
 
 	coveragelist = new TList();
 
 	int mmax = 10;
-	if(!position_error.Mag())
+	if(!position_error.Mag()){
 		nmax = 1;
+		accres = 0;
+		printf("\n\t Warning :  Acceptance has no uncertainty when target error is not set.\n\n");
+	} else{
+		accres = nmax;
+	}
+	
+	if(!r) // reset reaction
+		reaction = NULL;
 		
 	TVector3 pos, tmp_pos;
 	SetBadStrips(stripsfilename); 
@@ -736,14 +462,17 @@ TH1D *TSharcAnalysis::SetSimAcceptance(int nmax, TReaction *r, const char *strip
 	TH2F *hcovlab2,*hcovcm2;
 	TH1D *hcovlab, *hcovcm, *hcorlab, *hcorcm;
 		
+	GetRid("SharcCoverageLabVsRun");	
 	hcovlab2 = new TH2F("SharcCoverageLabVsRun","SharcCoverageLabMatrix",180,0,180,nmax,0,nmax);
 	hcovlab2->SetTitle(Form("%s; Theta Lab [deg]; Simulation Number",hcovlab2->GetTitle()));	
 	coveragelist->Add(hcovlab2);
 	
+	GetRid("SharcCoverageLab");	
 	hcovlab = new TH1D("SharcCoverageLab","SharcCoverageLab",180,0,180);
 	hcovlab->SetTitle(Form("%s; Theta Lab [deg]; Coverage [sr]",hcovlab->GetTitle()));	
 	coveragelist->Add(hcovlab);
 	
+	GetRid("SharcCorrectionLab");	
 	hcorlab = new TH1D("SharcCorrectionLab","SharcCorrectionLab",180,0,180);
 	hcorlab->SetTitle(Form("%s; Theta Lab [deg]; Correction factor ",hcorlab->GetTitle()));	
 	coveragelist->Add(hcorlab);
@@ -834,7 +563,7 @@ TH1D *TSharcAnalysis::SetSimAcceptance(int nmax, TReaction *r, const char *strip
 		cov_err = pow(variance,0.5);
 		
 		rel_err = cov_err/coverage;
-		if(correction>5.0 || rel_err>0.9)
+		if(correction>10.0 || rel_err>0.9)
 			continue;
 			
 		hcovlab->SetBinContent(i,coverage);
@@ -887,6 +616,7 @@ TH1D *TSharcAnalysis::SetSimAcceptance(int nmax, TReaction *r, const char *strip
 	}
 
 	gStyle->SetOptStat(0);
+	GetRid("SharcAcceptanceCurves");	
 	TCanvas *c = new TCanvas("SharcAcceptanceCurves","SharcAcceptanceCurves");
 	TLegend *leglab = new TLegend(0.7,0.7,0.9,0.9);
 	leglab->AddEntry(fcovlab,"Full phi coverage","lp");
@@ -933,138 +663,233 @@ TH1D *TSharcAnalysis::SetSimAcceptance(int nmax, TReaction *r, const char *strip
 }
 
 
-// 0:	0	0	0	
-// 1:	0	0	1
-// 2:	0	1	0	
-// 3:	0	1	1	
-// 4:	1	0	0	
-// 5:	1	0	1	
-// 6:	1	1	0	
-// 7:	1	1	1	
-TH1D *TSharcAnalysis::SetLimAcceptance(const char *stripsfilename){
-		
-	TVector3 pos, tmp_pos;
-	SetBadStrips(stripsfilename); 
-	double omega, thetalab;	
+TH1D *TSharcAnalysis::RebinAcceptance(TH1D *h, int binsz){
+
+	TH1D *hreb = new TH1D(Form("%s_%iDegBins",h->GetName(),binsz),"",180/(double)binsz,0,180);
+	hreb->SetTitle(Form("%s;%s;%s",h->GetTitle(),h->GetXaxis()->GetTitle(),h->GetYaxis()->GetTitle()));
 	
-	TH2F *hcovlab2 = new TH2F("SharcCoverageLabVsRun","SharcCoverageLabVsRun",180,0,180,9,0,9);
-	hcovlab2->SetTitle(Form("%s; Theta Lab [deg]; Run Number",hcovlab2->GetTitle()));	
-
-	TH1D *hcovlab = new TH1D("SharcCoverageLab","SharcCoverageLab",180,0,180);
-	hcovlab->SetTitle(Form("%s; Theta Lab [deg]; Coverage [sr]",hcovlab->GetTitle()));	
-
-	TH1D *hcorlab = new TH1D("SharcCorrectionLab","SharcCorrectionLab",180,0,180);
-	hcorlab->SetTitle(Form("%s; Theta Lab [deg]; Correction factor ",hcorlab->GetTitle()));	
-
-	TVector3 targ_pos = GetTargetPosition();
-
-	double x,y,z;		
-	for(int n=0; n<9; n++){
+	Double_t val, err, sumval, sumerr;
+	Int_t nval = 0, n = 0;
 	
-		tmp_pos.Clear();
-		x = targ_pos.X();
-		y = targ_pos.Y();				
-		z = targ_pos.Z();		
-		if(n<8){
-			if(n%2)
-				x -= position_error.X();
-			else
-				x += position_error.X();		
+	printf("\n\tRebinning acceptance curve [%i deg. bins]\n",binsz);
 	
-			if((n>1 && n<4) || (n>5 && n<8))
-				y -= position_error.Y();
-			else
-				y += position_error.Y();
-				
-			if(n<4)
-				z -= position_error.Z();
-			else
-				z += position_error.Z();	
-		}	
-			
-		tmp_pos.SetXYZ(x,y,z);
-		SetTargetPosition(tmp_pos);
-
-		for(int det=5; det<=16; det++){
-			for(int bs=0; bs<GetBackStrips(det); bs++){
-
-				if(BadStrip(det,-1,bs))
-					continue; 	
-			
-				for(int fs=0; fs<GetFrontStrips(det); fs++){
-			
-					if(BadStrip(det,fs,-1))
-						continue;
-								
-					 pos = GetPosition(det,fs,bs);
-					 thetalab = pos.Theta()*R2D;
-			 		 omega = GetSolidAngle(det,fs,bs);
-				 
-					 hcovlab2->Fill(thetalab,n,omega);		 
-				}
-			}		
+	for(int i=1; i<=180; i++){
+	
+		// only average over non-zero bins
+		val = h->GetBinContent(i);		
+		err = h->GetBinError(i);		
+	//  printf("\n\t theta = %i\t val = %.2e +/- %.2e",i,val,err);
+		if(val){// && err){
+			sumval += val;
+			sumerr += err;
+			nval++; 
 		}
-
-	//	printf("\n\n");
+				
+		if(i%binsz==0){
+			n++;
+			if(nval){
+		  	printf("\n\t Bin %i. Theta = %.1f\t   content = %.3f +/- %.3f  [npts = %i]",n,(double)i-binsz*0.5,sumval/nval,sumerr/nval,nval);
+				hreb->SetBinContent(n,sumval/nval);
+				hreb->SetBinError(n,sumerr/nval);				
+			}
+			nval = 0;
+			sumval = 0;
+			sumerr = 0;		
+		}
 	}
-		
-	SetTargetPosition(targ_pos);
-		
-  TF1 *fcovlab, *fcovcm; 
-	fcovlab = new TF1("MaxThetaCoverageLab",ThetaCoverage,0,180,2);
-  fcovlab->SetParameters(2*PI*D2R,0);
-	double theta_val,cov,var,err,cor;
-	TH1D *htmpx = hcovlab2->ProjectionX(), *htmpy;
+	printf("\n\n");
 	
-	for(int i=1;i<=hcovlab->GetNbinsX();i++){
-
-		htmpy = hcovlab2->ProjectionY("",i,i);
-		cov = hcovlab2->GetBinContent(i,9); // last bin is central position
-//		cov = htmpy->Integral()/((double)nmax); // average across runs
-		if(cov==0)
-			continue;
-
-		theta_val = hcovlab->GetBinCenter(i);			
-		cor = 	fcovlab->Eval(theta_val)/cov;
-		
-		var=0.0;	
-		for(int j=1; j<=htmpy->GetNbinsX(); j++)
-			var += pow(cov-htmpy->GetBinContent(j),2.0);	
-		var/=9.0;	
-		err = pow(var,0.5);
-		
-		if(cor>5.0 || err/cov>0.5)
-			continue;
-			
-		hcovlab->SetBinContent(i,cov);
-		hcovlab->SetBinError(i,err);
-		
-		hcorlab->SetBinContent(i,cor);
-		hcorlab->SetBinError(i,err/cov*cor);	// same relative error				
-	}
-		
-	TCanvas *c = new TCanvas;
-	c->Divide(1,2);
-	c->cd(1);
-	hcovlab->Draw();
-	fcovlab->Draw("same");
-	c->cd(2);
-	hcovlab2->Draw("colz");
-		
-	return hcovlab;
+	return hreb;			
 }
 
 
+TH1D *TSharcAnalysis::MakeSin(Double_t binsz){
 
+	TH1D *hsin = new TH1D("sin","sin",180,0,180);
+	double integral=0.0;
+  for(int i=0; i<180; i++){
+		hsin->SetBinContent(i,TMath::Sin(D2R*hsin->GetBinCenter(i)));
+		hsin->SetBinError(i,0.0);
+    integral+=hsin->GetBinContent(i)*hsin->GetBinWidth(i)*D2R;
+  }
+  hsin->Scale(2./integral);	// integral must be 2.
+	
+	hsin->Rebin(binsz);				// rebin theta
+	hsin->Scale(1/binsz);	
+	
+	return hsin;	
+}
+
+
+TH1D *TSharcAnalysis::SimulateAngDist(const char *sname, double &cntres, double &reserr, double t1, double t2, double counts, double counterr){
+
+	static TH1D *hacc;
+	if(!hacc){
+		const char *stripsfile = "/Users/steffencruz/Desktop/Steffen/Work/PhD/TRIUMF/CodesAndTools/SharcAnalysis/BadStrips.txt";
+		TReaction *r = new TReaction("sr95","d","p","sr96",510.9,0,true);
+		SetTarget(0.0,0.0,0.0,4.5,"cd2",0.5,0.5,0.5);
+	
+		TList *acclist = TSharcAnalysis::GetAcceptanceList(r,stripsfile,30);	  
+		hacc = (TH1D*)acclist->FindObject("SharcCorrectionCm");	
+		Double_t er, ct = hacc->IntegralAndError(1,180,er);
+		
+		printf("\n\n\nAcceptance correction integral = %.3e +/- %.3e [rel err = %.2f %%]\n\n",ct,er,er/ct*100.0);
+	}
+	GetRid("sin");
+	TH1D *hsin = MakeSin(1.0);
+	
+	std::string str;
+	str.assign(sname);
+	std::ifstream infile;
+	if(str.find(".txt")!=std::string::npos)
+		infile.open(str.c_str());
+	else
+		infile.open(Form("%s/Fresco%s.txt",SHCDIR,sname));
+  TH1D *hsigma = new TH1D(sname,Form("%s; Theta Cm [deg.]; Differential Cross Section [mb/sr]",sname),180,0,180);
+  hsigma->SetLineColor(kRed);
+  hsigma->Sumw2();
+  Double_t thetacm, dsig;
+  while(infile.good()){
+    infile >> thetacm >> dsig;
+   // printf("\n\tthetacm = %.2f\tdsig = %.2e",thetacm,dsig);
+    hsigma->SetBinContent((int)thetacm,dsig);
+    hsigma->SetBinError((int)thetacm,0.0);
+  }
+  infile.close();
+  
+	GetRid("SimulatedCounts");  
+  TCanvas *canv = new TCanvas("SimulatedCounts","Counts, Simulated using DWBA",1200,600);
+	canv->Divide(2,1);
+	canv->cd(1);
+	hsigma->Draw();
+		
+	Double_t sigtot = hsigma->Integral();  
+  if(sigtot==0){
+  	printf("\n\t Warning :  No FRESCO data was found for %s.\n\n",str.c_str());
+  	return 0;
+	}
+
+	GetRid("SineCorrectedSigma");
+  TH1D *hsincor = (TH1D*)hsigma->Clone("SineCorrectedSigma");
+  hsincor->SetTitle("Sine Corrected Cross Section; Theta Cm [deg.]; Cross Section / Sine");
+  hsincor->SetLineColor(kGreen);  
+  hsincor->Multiply(hsin);  // sine correction  
+  hsincor->Draw("same");
+
+	GetRid("SineAccCorrectedSigma");    
+  TH1D *hacccor = (TH1D*)hsincor->Clone("SineAccCorrectedSigma");
+  hacccor->SetTitle("Acceptance & Sine Corrected Cross Section; Theta Cm [deg.]; Cross Section / Sine * Acceptance ");  
+  hacccor->SetMarkerColor(kBlue);
+  hacccor->SetLineColor(kBlue);
+  hacccor->Divide(hacc);    // reduce counts at each angle to reflect dead strips 
+  hacccor->Draw("same e1");
+  
+  TLegend *leg = new TLegend(0.5,0.6,1.0,0.9);
+  leg->AddEntry(hsigma,"FRESCO Cross Seciton","lp");
+  leg->AddEntry(hsincor,"FRESCO * Sin","lp");  
+  leg->AddEntry(hacccor,"FRESCO * Sin * Acc","lp");  
+  leg->SetLineColor(kBlack);  
+  leg->Draw("same");
+  gPad->SetLogz();
+  
+  TH1D *hcounts = (TH1D*)hacccor->Clone(Form("SimulatedCounts_%s",sname));
+  hcounts->SetTitle("Simulated Counts; Theta Cm [deg.]; Counts ");  
+  hcounts->SetLineColor(kBlue); 
+  hcounts->SetMarkerColor(kBlue);
+
+
+  canv->cd(2);   
+  ////////////////////  SF DETERMINED USING INTEGRAL OVER ALL ANGLES   //////////////////// 
+  // only one angular dependent uncertainty, comes form acceptance
+  // we need to use IntegralAndError(t1,t2,err) to get the error as it depends on t1,t2
+  // then we apply global scaling for normalization and SF. 
+  // The errors on norm and SF these are not independent, so are added to err in quadrature
+  // err_tot = sqrt( pow(err/tot,2.0) + pow(normerr/norm,2.0) + pow(sferr/sf,2.0) )
+  
+	GetRid("Normalization");
+	// scalar hists have no error : it is applied to integral error at the end		
+//	Double_t norm = 7.81e-4, normerr = 0.06e-4;
+	Double_t norm = 8.8e-4, normerr = 0.1e-4;
+ 	TH1D *hnorm = MakeScaleHist(1,norm,0.0,"Normalization"); 
+  hcounts->Divide(hnorm);   // convert mb/sr into counts  
+  
+	hcounts->Draw("e1");
+
+	// predicted counts for SF=1
+	Double_t cntmaxerr, cntmax = hcounts->IntegralAndError(1,180,cntmaxerr); 
+	// now calculate norm error	
+	cntmaxerr = cntmax*sqrt(pow(cntmaxerr/cntmax,2.0)+pow(normerr/norm,2.0)); 
+	
+	TH1D *hsfcounts = (TH1D*)hcounts->Clone(Form("FixedCounts_%s",sname));
+	hsfcounts->SetLineColor(kBlack);
+  hsfcounts->SetMarkerColor(kBlack);
+	
+	GetRid("SpecFactor");		
+	// determine SF required to reproduce input total counts
+	Double_t sf = counts/cntmax; 
+	// now calculate SF error	
+	Double_t sferr = sf*sqrt(pow(cntmaxerr/cntmax,2)+pow(counterr/counts,2)); // error
+		// scalar hists have no error : it is applied to integral error at the end	
+ 	TH1D *hsf = MakeScaleHist(1,sf,0.0,"SpecFactor"); 
+ 	hsfcounts->Multiply(hsf);
+ 	
+	hsfcounts->Draw("same e1");
+	// predicted counts for SF!=1	
+	Double_t cntset = hsfcounts->Integral(1,180); 
+	// add experimental relative error in quadrature	
+	Double_t cntseterr = cntset*sqrt(pow(cntmaxerr/cntmax,2.0)+pow(counterr/counts,2)); 
+	
+ // predicted counts for SF!=1 over theta range, t1-t2
+	cntres = hsfcounts->IntegralAndError((int)t1,(int)t2,reserr); 	
+ // now apply all errors in quadrature
+//	printf("\n\n reserr/cntres = %.3f    cntseterr/cntset = %.3f",reserr/cntres,cntseterr/cntset);
+	reserr = cntres*sqrt(pow(reserr/cntres,2.0)+pow(cntseterr/cntset,2.0));
+//	printf("  ---> reserr/cntres = %3f\n",reserr/cntres);
+
+	// PHEW !
+	////////////////////////////////////////////////////////////////////////////////////////	
+	
+	
+	TLegend *leg2 = new TLegend(0.4,0.6,0.95,0.85);
+	leg2->AddEntry(hcounts,Form("Total counts [SF=1.0] = %.2e +/- %.2e",cntmax,cntmaxerr),"lp");
+	leg2->AddEntry(hsfcounts,Form("Counts [SF=%.3f] = %.2e +/- %.2e",sf,cntset,cntseterr),"lp");
+
+	leg2->Draw();
+  	
+  printf("\n\n Simulation Results for %s, Measured counts = %.2e +/- %.2e :-",sname,counts,counterr);
+  printf("\n\t -> Total Cross Section             = %.2e mb/sr",sigtot);
+  printf("\n\t -> Total Proton Counts [SF=1]      = %.2e +/- %.2e",cntmax,cntmaxerr); 
+  printf("\n\t -> Spectroscopic Factor            = %.3f +/- %.3f",sf,sferr);  
+  printf("\n\t -> Total Proton Counts [SF=%.2f]   = %.2e +/- %.2e",sf,cntset,cntseterr); 
+  printf("\n\t -> Counts In Rng [%.1f-%.1f]       = %.2e +/- %.2e\n\n",t1,t2,cntres,reserr);  
+  	
+  return hsfcounts;
+}
 
 
 TList *TSharcAnalysis::GetAcceptanceList(TReaction *r, const char *stripsfile, Int_t resolution){
 
-//	if(r && reaction && strcmp(r->GetName(),reaction->GetName())==0 && strcmp(stripsfile,badstripsfile.c_str())==0)
-//		return coveragelist;
+	Bool_t same_reac=false, same_file=false, same_res=false;
+	if(r && reaction && strcmp(r->GetName(),reaction->GetName())==0){
+		same_reac = true;
+	} else if(!r && !reaction){
+		same_reac = true;	
+	}
+	
+	if(strcmp(stripsfile,badstripsfile.c_str())==0){
+		same_file = true;
+	}
+	
+	if(!position_error.Mag() || resolution == accres){
+		same_res = true;
+	}
+	
+	if(coveragelist && same_reac && same_file && same_res){
+		printf("\n\t Using existing acceptance results.\n\n");
+		return coveragelist;
+	}
 
-	//SetAcceptance(r,stripsfile);
-	SetSimAcceptance(resolution,r,stripsfile);
+	SetAcceptance(resolution,r,stripsfile);
 	
 	return coveragelist;	
 }
@@ -1120,6 +945,7 @@ int TSharcAnalysis::BadStrip(int det, int fs, int bs){
  		int maxstrips = 0;		
 		for(int dd=5; dd<=16; dd++){
 			maxstrips+=GetFrontStrips(dd)+GetBackStrips(dd);
+			GetRid(Form("SharcHitPattern_Det%02i",dd));
 			h[dd-5] = new TH2F(Form("SharcHitPattern_Det%02i",dd),Form("SharcHitPattern_Det%02i; Back Strip; Front Strip",dd),48,0,48,24,0,24);
 			coveragelist->Add(h[dd-5]);
 						
@@ -1214,32 +1040,49 @@ void TSharcAnalysis::SetOmegaMaxMin(bool printout){
 }
 
 
+TH1D *TSharcAnalysis::MakeScaleHist(Double_t binsz, Double_t scale, Double_t err, const char *name){
+
+  Int_t nbins = (Int_t)180.0/binsz;
+  TH1D *hscale = new TH1D(name,name,nbins,0,180);
+  hscale->SetTitle(Form("Scale Histogram for %s; Theta [deg]; Scale",name));
+  for(int i=1; i<=nbins; i++){
+    hscale->SetBinContent(i,scale);
+    hscale->SetBinError(i,err);
+  }
+  return hscale;
+}    
+
+
 void TSharcAnalysis::Print(Option_t *opt) {
 
 	printf("\n\n* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *");
 	printf("\n\n\t____TSharcAnalysis____");
 	
-	printf("\n\n\tSHARC configuration table :-");
-	
-	printf("\n\n DET : FS / pitch : BS / pitch : DEL[um] : DEL[dead][um] : PAD[um] : PAD[dead][um] \n");
-	for(int det=1; det<=16; det++){
+	if(strcmp(opt,"all")==0){
+		printf("\n\n\tSHARC configuration table :-");
+		printf("\n\n DET : FS / pitch : BS / pitch : DEL[um] : DEL[dead][um] : PAD[um] : PAD[dead][um] \n");
+		for(int det=1; det<=16; det++){
 		
-		printf("\n%4i %4i%5.1f[mm]%4i%5.1f%s%9.2f%10.2f",det,frontstrips[det-1],frontpitches[det-1],
-			backstrips[det-1],backpitches[det-1],det<4||det>12?"[rad]":"[mm] ",DELthicknesses[det-1],DELdeadlayers[det-1]);
-		if(det>4 && det<=8)
-			printf("%15.2f%10.2f",PADthicknesses[det-1],PADdeadlayers[det-1]);
-
+			printf("\n%4i %4i%5.1f[mm]%4i%5.1f%s%9.2f%10.2f",det,frontstrips[det-1],frontpitches[det-1],
+				backstrips[det-1],backpitches[det-1],det<4||det>12?"[rad]":"[mm] ",DELthicknesses[det-1],DELdeadlayers[det-1]);
+			if(det>4 && det<=8)
+				printf("%15.2f%10.2f",PADthicknesses[det-1],PADdeadlayers[det-1]);
 		}
-	
+	}
 	printf("\n\n\n\t Target  :-\n\n Material = ' %s '\n Thickness =  %.2f [um]\n Position =  [%.2f,%.2f,%.2f] [mm]",
 			targmat.c_str(),targetthickness,position_offset.X(),position_offset.Y(),position_offset.Z());
 	
 	if(position_error.Mag())
 		printf(" +/- [%.2f,%.2f,%.2f] [mm]",position_error.X(),position_error.Y(),position_error.Z());
 
-	printf("\n\n\t BadStrips   :-\n\n File Name = ' %s '\n # Bad Strips = %i",badstripsfile.c_str(),nbadstrips);
-
-	printf("\n\n* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\n\n\n");
+	if(badstripsfile.length())
+		printf("\n\n\t BadStrips   :-\n\n File Name = ' %s '\n Number Of Bad Strips = %i",badstripsfile.c_str(),nbadstrips);
+	if(reaction){
+		printf("\n\n\t Reaction   :-\n\n  Name = ' %s '",reaction->GetNameFull());
+		if(strcmp(opt,"all")==0)
+			reaction->Print("all");
+	}
+	printf("\n\n* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\n\n");
 		
 }
 
@@ -1299,6 +1142,31 @@ void TSharcAnalysis::ResetDetectors(){
 	DELthicknesses[12] = 390.0; DELthicknesses[13] = 390.0; DELthicknesses[14] = 383.0;  DELthicknesses[15] = 385.0;
 	
 	PADthicknesses[4]  = 1534.0; PADthicknesses[5] = 1535.0;  DELthicknesses[6] = 1535.0;   DELthicknesses[7] = 1539.0;
+}
+
+
+void TSharcAnalysis::GetRid(const char *name, Bool_t delete_all){
+	TObject *obj;
+
+	if(coveragelist){
+		obj = coveragelist->FindObject(name);
+		if(obj) coveragelist->Remove(obj);
+	}
+	
+	if(delete_all){
+		obj = gROOT->FindObjectAny(name);
+		if(!obj) return;
+		if(strcmp(obj->ClassName(),"TCanvas")==0){
+			TCanvas *canv = (TCanvas*)obj;
+			canv->Clear();
+			canv->Closed();
+	//		canv = NULL;
+			gSystem->ProcessEvents();
+			delete canv;
+		}
+		else obj->Delete();
+	}
+	
 }
 
 
