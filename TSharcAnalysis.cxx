@@ -338,7 +338,7 @@ double TSharcAnalysis::GetSolidAngle(int det, int fs, int bs){
     rholim[1] = TMath::MaxElement(rho.size(),&rho[0]);
     rho.clear();
     
-    Omega = fabs(z)*backpitches[det-1]*(TMath::Power(rholim[0]*rholim[0]+z*z,-0.5)-TMath::Power(rholim[1]*rholim[1]+z*z,-0.5));
+    Omega = fabs(z)*backpitches[det-1]*D2R*(TMath::Power(rholim[0]*rholim[0]+z*z,-0.5)-TMath::Power(rholim[1]*rholim[1]+z*z,-0.5));
     
   } else {        
     std::vector<double> x,y,z;
