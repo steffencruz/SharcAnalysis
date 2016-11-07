@@ -1127,7 +1127,7 @@ void TSharcAnalysis::ResetDetectors(){
 		frontstrips[i]  = 16;		 frontstrips[4+i]  = 24;  frontstrips[8+i]	= 24;  frontstrips[12+i]= 16;
 		backstrips[i]		= 24;	 	 backstrips[4+i]	 = 48;  backstrips[8+i]	  = 48;	 backstrips[12+i]= 24; 
 		frontpitches[i]	=	2.0;	 frontpitches[4+i] = 3.0; frontpitches[8+i] =	3.0; frontpitches[12+i]=	2.0;
-		backpitches[i]	=	PI/48; backpitches[4+i]  = 1.0; backpitches[8+i]  =	1.0; backpitches[12+i]=	PI/48;
+		backpitches[i]	=	3.4; backpitches[4+i]  = 1.0; backpitches[8+i]  =	1.0; backpitches[12+i]=	3.4;
 
 // various thicknesses in um
 		DELdeadlayers[i] = 0.7; DELdeadlayers[4+i] = 0.1; DELdeadlayers[8+i] = 0.1; DELdeadlayers[12+i] = 0.7; 
