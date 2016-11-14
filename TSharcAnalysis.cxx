@@ -299,15 +299,19 @@ TList *TSharcAnalysis::SimulateMeasurement(TReaction *r, Bool_t use_badstrips){
 	}
 		
 	GetRid("ReconstructedKinematics");
-	TH2F *hkinr = new TH2F("ReconstructedKinematics",Form("Simulated SHARC Kinematics for %s; #theta_{LAB} [#circ]; Measured Energy [keV]",r->GetNameFull()),180,0,180,300,0,30000);
+	TH2F *hkinr = new TH2F("ReconstructedKinematics",Form("Reconstructed SHARC Kinematics for %s; #theta_{LAB} [#circ]; Measured Energy [keV]",r->GetNameFull()),180,0,180,300,0,30000);
 	list->Add(hkinr);	
+	
+	GetRid("ReconstructedExcitation");
+	TH2F *hexcr = new TH2F("ReconstructedExcitation",Form("Reconstructed SHARC Exciation Energy for %s; #theta_{LAB} [#circ]; Measured Energy [keV]",r->GetNameFull()),180,0,180,1000,r->GetExc()-500,r->GetExc()+500);
+	list->Add(hexcr);		
 	
 	GetRid("Kinematics");
 	TH2F *hkin = new TH2F("Kinematics",Form("Simulated SHARC Kinematics for %s; #theta_{LAB} [#circ]; Measured Energy [keV]",r->GetNameFull()),180,0,180,300,0,30000);
 	list->Add(hkin);
 	
 	GetRid("KinematicsDel");	
-	TH2F *hkin_del = new TH2F("KinematicsDel",Form("Simulated SHARC Del Kinematics for %s; #theta_{LAB} [#circ]; Delta Energy [keV]",r->GetNameFull()),180,0,180,300,0,30000);
+	TH2F *hkin_del = new TH2F("KinematicsDel",Form("Simulated SHARC Del Kinematics for %s; #theta_{LAB} [#circ]; #Delta Energy [keV]",r->GetNameFull()),180,0,180,300,0,30000);
 	list->Add(hkin_del);
 	
 	GetRid("KinematicsPad");		
@@ -315,7 +319,7 @@ TList *TSharcAnalysis::SimulateMeasurement(TReaction *r, Bool_t use_badstrips){
 	list->Add(hkin_pad);		
 	
 	GetRid("PID");		
-	TH2F *hpid = new TH2F("PID",Form("Simulated SHARC PID for %s; Pad Energy [keV]; Delta Energy [keV]",r->GetNameFull()),300,0,30000,100,0,10000);
+	TH2F *hpid = new TH2F("PID",Form("Simulated SHARC PID for %s; Pad Energy [keV]; #Delta Energy [keV]",r->GetNameFull()),300,0,30000,100,0,10000);
 	list->Add(hpid);
 
 	Double_t edel_max = 25e3; // pre-amplifier saturates at 25 MeV
@@ -325,7 +329,7 @@ TList *TSharcAnalysis::SimulateMeasurement(TReaction *r, Bool_t use_badstrips){
 
 	TVector3 pos;
 	std::vector<double> emeas;
-	Double_t ekin, edel, epad, etot, theta_lab, omega, ekinr;
+	Double_t ekin, edel, epad, etot, theta_lab, omega, ekinr, excr;
 	Int_t bsmax, fsmax;
 	
 	TH2F *hhit_del[16], *hhit_pad[16], *hdet_pid[16];
@@ -340,9 +344,9 @@ TList *TSharcAnalysis::SimulateMeasurement(TReaction *r, Bool_t use_badstrips){
 		GetRid(Form("HitPatternDel_Det%i",det));		
 		GetRid(Form("HitPatternPad_Det%i",det));		
 		GetRid(Form("PID_Det%i",det));		
-		hhit_del[det-1] = new TH2F(Form("HitPatternDel_Det%i",det),	Form("Simulated SHARC Delta Data for %s in Det %i; Front strip; Back strip",r->GetNameFull(),det),bsmax,0,bsmax,fsmax,0,fsmax);
-		hhit_pad[det-1] = new TH2F(Form("HitPatternPad_Det%i",det),	Form("Simulated SHARC Pad Data for %s in Det %i; Front strip; Back strip",r->GetNameFull(),det),bsmax,0,bsmax,fsmax,0,fsmax);					
-		hdet_pid[det-1] = new TH2F(Form("PID_Det%i",det),	Form("Simulated SHARC PID Data for %s in Det %i; Front strip; Back strip",r->GetNameFull(),det),300,0,30000,100,0,10000);
+		hhit_del[det-1] = new TH2F(Form("HitPatternDel_Det%i",det),	Form("Simulated SHARC Delta Data for %s in Det %i; Back strip; Front strip; #Delta Energy [keV]",r->GetNameFull(),det),bsmax,0,bsmax,fsmax,0,fsmax);
+		hhit_pad[det-1] = new TH2F(Form("HitPatternPad_Det%i",det),	Form("Simulated SHARC Pad Data for %s in Det %i; Back strip; Front strip; Pad Energy [keV]",r->GetNameFull(),det),bsmax,0,bsmax,fsmax,0,fsmax);					
+		hdet_pid[det-1] = new TH2F(Form("PID_Det%i",det),	Form("Simulated SHARC PID Data for %s in Det %i; Pad Energy [keV]; #Delta Energy [keV]",r->GetNameFull(),det),300,0,30000,100,0,10000);
 		
 		for(int fs=0; fs<fsmax; fs++){
 		
@@ -387,7 +391,10 @@ TList *TSharcAnalysis::SimulateMeasurement(TReaction *r, Bool_t use_badstrips){
 				hkin->Fill(theta_lab*R2D,etot,omega);
 				
 				ekinr = GetReconstructedEnergy(pos,det,edel,epad,ion);
+				excr = r->GetExcEnergy(ekinr*1e-3,theta_lab,2)*1e3;
+				
 				hkinr->Fill(theta_lab*R2D,ekinr,omega);
+				hexcr->Fill(theta_lab*R2D,excr,omega);
 			}
 		}
 		if(hhit_del[det-1]->GetEntries())
