@@ -126,6 +126,8 @@ class TSharcAnalysis 	{
     static std::vector<double> GetMeasuredEnergy(TVector3 pos, int det, double ekin, char ion='p', Option_t *opt="", double edel=-1.0);//!	
     static std::vector<double> GetMeasuredEnergy(int det, int fs, int bs, double ekin, char ion='p', Option_t *opt="", double edel=-1.0)
     			{return GetMeasuredEnergy(GetPosition(det,fs,bs),det,ekin,ion,opt,edel); } //!		 
+    
+    static TList *SimulateMeasurement(TReaction *r, Bool_t use_badstrips=false);
     	
 		static void InitializeSRIMInputs();   //!
     static TSRIM *GetSRIM(char ion, std::string material); //!

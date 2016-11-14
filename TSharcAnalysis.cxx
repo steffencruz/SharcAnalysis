@@ -49,6 +49,9 @@ UInt_t TSharcAnalysis::nbadstrips									= 0;
 double TSharcAnalysis::Omega_min								 	= 0.0000;
 double TSharcAnalysis::Omega_max 									= 0.0000;
 
+static const unsigned long npos = std::string::npos;	
+
+
 
 
 TSharcAnalysis::TSharcAnalysis(double Xoff, double Yoff, double Zoff)	{	
@@ -111,7 +114,7 @@ double TSharcAnalysis::GetTargetThickness(double theta, double phi, double fract
 void TSharcAnalysis::InitializeSRIMInputs()	{
 
 	if(!targmat.size())
-		printf("\n\tError :  Target Material Must Be Set!\n");
+		printf("\n\tError :  Target Material Must Be Set!\n\n\n");
 
 	p_in_targ  = new TSRIM(Form("p_in_%s.txt",targmat.c_str()),100e3,0,false);
 	p_in_si    = new TSRIM("p_in_si.txt",100e3,0,false); 
@@ -205,8 +208,18 @@ double TSharcAnalysis::GetReconstructedEnergy(TVector3 position, int det, double
 
 
 std::vector<double> TSharcAnalysis::GetMeasuredEnergy(TVector3 position, int det, double ekin, char ion, Option_t *opt, double edel){
-  TSRIM *srim_targ,*srim_si;
+
   std::vector<double> Emeas;
+  // INITIALISE TO CORRECT SIZE TO PREVENT SEG FAULTS
+	Emeas.push_back(0.0);
+	Emeas.push_back(0.0);
+  
+	if(!targmat.size() && strcmp(opt,"no_target")!=0){
+		printf("\n\tError :  Target Material Must Be Set!\n\n\n");
+		return Emeas;
+	}
+
+  TSRIM *srim_targ,*srim_si;
   srim_targ= GetSRIM(ion,"targ");
   srim_si  = GetSRIM(ion,"si");
   if(srim_targ==0 || srim_si==0)
@@ -266,9 +279,126 @@ std::vector<double> TSharcAnalysis::GetMeasuredEnergy(TVector3 position, int det
 //  printf(DRED"theta = %.02f\n",theta*180/3.1415);
 //  printf(DGREEN"dist_target = %.02f\tdist_deadlayer = %.02f\tdist_dE = %.02f\tdist_pdeadlayer = %.02f\tdist_pad = %.02f\n",dist_target,dist_deadlayer,dist_dE,dist_pdeadlayer,dist_pad);
 //  printf(DBLUE"Eafter_target = %.02f\tEafter_deadlayer = %.02f\tEafter_dE = %.02f\tEafter_pdeadlayer = %.02f\tEafter_pad = %.02f\n\n"RESET_COLOR"",Eafter_target,Eafter_deadlayer,Eafter_dE,Eafter_pdeadlayer,Eafter_pad);
-  Emeas.push_back( Eafter_deadlayer  - Eafter_del );  // we measure energy lost in dE sensitive region
-  Emeas.push_back( Eafter_pdeadlayer - Eafter_pad ); // ... and also in pad sensitive region
+  Emeas.at(0) =  Eafter_deadlayer  - Eafter_del ;  // we measure energy lost in dE sensitive region
+  Emeas.at(1) =  Eafter_pdeadlayer - Eafter_pad ; // ... and also in pad sensitive region
   return Emeas;
+}
+
+
+TList *TSharcAnalysis::SimulateMeasurement(TReaction *r, Bool_t use_badstrips){
+	TList *list = new TList;
+
+	if(!targmat.size()){
+		printf("\n\tError :  Target Material Must Be Set!\n\n\n");
+		return list;
+	}
+
+	if(use_badstrips && badstripsfile.length()==0){
+		printf("\n\tWarning :  Bad strips can not be used as they have not been set.\n\n");
+		use_badstrips = false;
+	}
+		
+	GetRid("ReconstructedKinematics");
+	TH2F *hkinr = new TH2F("ReconstructedKinematics",Form("Simulated SHARC Kinematics for %s; #theta_{LAB} [#circ]; Measured Energy [keV]",r->GetNameFull()),180,0,180,300,0,30000);
+	list->Add(hkinr);	
+	
+	GetRid("Kinematics");
+	TH2F *hkin = new TH2F("Kinematics",Form("Simulated SHARC Kinematics for %s; #theta_{LAB} [#circ]; Measured Energy [keV]",r->GetNameFull()),180,0,180,300,0,30000);
+	list->Add(hkin);
+	
+	GetRid("KinematicsDel");	
+	TH2F *hkin_del = new TH2F("KinematicsDel",Form("Simulated SHARC Del Kinematics for %s; #theta_{LAB} [#circ]; Delta Energy [keV]",r->GetNameFull()),180,0,180,300,0,30000);
+	list->Add(hkin_del);
+	
+	GetRid("KinematicsPad");		
+	TH2F *hkin_pad = new TH2F("KinematicsPad",Form("Simulated SHARC Pad Kinematics for %s; #theta_{LAB} [#circ]; Pad Energy [keV]",r->GetNameFull()),180,0,180,300,0,30000);
+	list->Add(hkin_pad);		
+	
+	GetRid("PID");		
+	TH2F *hpid = new TH2F("PID",Form("Simulated SHARC PID for %s; Pad Energy [keV]; Delta Energy [keV]",r->GetNameFull()),300,0,30000,100,0,10000);
+	list->Add(hpid);
+
+	Double_t edel_max = 25e3; // pre-amplifier saturates at 25 MeV
+	Double_t thmax = r->GetThetaMax(2);
+	std::string ion_name = r->GetIonName(2); // get name of ejectile nucleus
+	char ion = ion_name.at(ion_name.length()-1);
+
+	TVector3 pos;
+	std::vector<double> emeas;
+	Double_t ekin, edel, epad, etot, theta_lab, omega, ekinr;
+	Int_t bsmax, fsmax;
+	
+	TH2F *hhit_del[16], *hhit_pad[16], *hdet_pid[16];
+	
+	for(int det=5; det<=16; det++){
+		if(GetPosition(det,0,0).Theta()>=thmax) // quick angle check to speed up
+			continue;
+			
+		bsmax = GetBackStrips(det);
+		fsmax = GetFrontStrips(det);	
+		
+		GetRid(Form("HitPatternDel_Det%i",det));		
+		GetRid(Form("HitPatternPad_Det%i",det));		
+		GetRid(Form("PID_Det%i",det));		
+		hhit_del[det-1] = new TH2F(Form("HitPatternDel_Det%i",det),	Form("Simulated SHARC Delta Data for %s in Det %i; Front strip; Back strip",r->GetNameFull(),det),bsmax,0,bsmax,fsmax,0,fsmax);
+		hhit_pad[det-1] = new TH2F(Form("HitPatternPad_Det%i",det),	Form("Simulated SHARC Pad Data for %s in Det %i; Front strip; Back strip",r->GetNameFull(),det),bsmax,0,bsmax,fsmax,0,fsmax);					
+		hdet_pid[det-1] = new TH2F(Form("PID_Det%i",det),	Form("Simulated SHARC PID Data for %s in Det %i; Front strip; Back strip",r->GetNameFull(),det),300,0,30000,100,0,10000);
+		
+		for(int fs=0; fs<fsmax; fs++){
+		
+			if(use_badstrips && BadStrip(det,fs,-1))
+				continue;
+				
+			for(int bs=0; bs<bsmax; bs++){
+			
+				if(use_badstrips && BadStrip(det,-1,bs))
+					continue;			
+					
+				pos = GetPosition(det,fs,bs);
+				theta_lab = pos.Theta();
+				
+				if(theta_lab>=thmax)
+					continue;
+					
+				ekin = r->GetTLab(theta_lab,2)*1e3;
+				emeas = GetMeasuredEnergy(pos,det,ekin,ion);
+				edel = emeas.at(0);
+				if(edel>edel_max)
+					edel=edel_max;
+				epad = emeas.at(1);
+				etot=edel+epad;
+				
+			//	printf("\n[%2i,%2i,%2i]\t ekin = %5.2f keV\t etot = %5.2f keV [%5.2f+%5.2f]",det,fs,bs,ekin,etot,edel,epad);
+				omega = GetSolidAngle(det,fs,bs); // weight each pixel according to solid angle
+	
+				hhit_del[det-1]->Fill(bs,fs,edel);
+					
+				if(epad){
+					hkin_pad->Fill(theta_lab*R2D,epad,omega);				
+					hhit_pad[det-1]->Fill(bs,fs,epad);
+					hdet_pid[det-1]->Fill(epad,edel,omega);	
+					
+					if(det>=5 && det<=8)		// only downstream box			
+						hpid->Fill(epad,edel,omega);	
+				}
+				
+				hkin_del->Fill(theta_lab*R2D,edel,omega);
+
+				hkin->Fill(theta_lab*R2D,etot,omega);
+				
+				ekinr = GetReconstructedEnergy(pos,det,edel,epad,ion);
+				hkinr->Fill(theta_lab*R2D,ekinr,omega);
+			}
+		}
+		if(hhit_del[det-1]->GetEntries())
+			list->Add(hhit_del[det-1]);
+		if(hhit_pad[det-1]->GetEntries())
+			list->Add(hhit_pad[det-1]);
+		if(hdet_pid[det-1]->GetEntries())
+			list->Add(hdet_pid[det-1]);			
+	}
+
+	return list;	
 }
 
 
@@ -464,17 +594,17 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
 		
 	GetRid("SharcCoverageLabVsRun");	
 	hcovlab2 = new TH2F("SharcCoverageLabVsRun","SharcCoverageLabMatrix",180,0,180,nmax,0,nmax);
-	hcovlab2->SetTitle(Form("%s; Theta Lab [deg]; Simulation Number",hcovlab2->GetTitle()));	
+	hcovlab2->SetTitle(Form("%s; #theta_{LAB} [#circ]; Simulation Number",hcovlab2->GetTitle()));	
 	coveragelist->Add(hcovlab2);
 	
 	GetRid("SharcCoverageLab");	
 	hcovlab = new TH1D("SharcCoverageLab","SharcCoverageLab",180,0,180);
-	hcovlab->SetTitle(Form("%s; Theta Lab [deg]; Coverage [sr]",hcovlab->GetTitle()));	
+	hcovlab->SetTitle(Form("%s; #theta_{LAB} [#circ]; Coverage [sr]",hcovlab->GetTitle()));	
 	coveragelist->Add(hcovlab);
 	
 	GetRid("SharcCorrectionLab");	
 	hcorlab = new TH1D("SharcCorrectionLab","SharcCorrectionLab",180,0,180);
-	hcorlab->SetTitle(Form("%s; Theta Lab [deg]; Correction factor ",hcorlab->GetTitle()));	
+	hcorlab->SetTitle(Form("%s; #theta_{LAB} [#circ]; Correction factor ",hcorlab->GetTitle()));	
 	coveragelist->Add(hcorlab);
 	
 	std::string rname="";	
@@ -483,15 +613,15 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
   	rname.assign(r->GetNameFull());	
 	
 		hcovcm2 = new TH2F("SharcCoverageCmVsRun","SharcCoverageCmMatrix",180,0,180,nmax,0,nmax);
-		hcovcm2->SetTitle(Form("%s; Theta Cm [deg]; Simulation Number",hcovcm2->GetTitle()));	
+		hcovcm2->SetTitle(Form("%s; #theta_{CM} [#circ]; Simulation Number",hcovcm2->GetTitle()));	
 		coveragelist->Add(hcovcm2);
 
 		hcovcm = new TH1D("SharcCoverageCm",Form("SharcCoverageCm : %s",rname.c_str()),180,0,180);
-		hcovcm->SetTitle(Form("%s; Theta Cm [deg]; Coverage [sr]",hcovcm->GetTitle()));	
+		hcovcm->SetTitle(Form("%s; #theta_{CM} [#circ]; Coverage [sr]",hcovcm->GetTitle()));	
 		coveragelist->Add(hcovcm);
 
 		hcorcm = new TH1D("SharcCorrectionCm",Form("SharcCorrectionCm : %s",rname.c_str()),180,0,180);
-		hcorcm->SetTitle(Form("%s; Theta Cm [deg]; Correction factor ",hcorcm->GetTitle()));	
+		hcorcm->SetTitle(Form("%s; #theta_{CM} [#circ]; Correction factor ",hcorcm->GetTitle()));	
 		coveragelist->Add(hcorcm);		
 	}
 	
@@ -541,6 +671,8 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
   TF1 *fcovlab, *fcovcm; 
 	fcovlab = new TF1("MaxThetaCoverageLab",ThetaCoverage,0,180,2);
   fcovlab->SetParameters(2*PI*D2R,0);
+  fcovlab->SetLineStyle(2);
+  fcovlab->SetLineWidth(1);
 
 	double theta_val, coverage, variance, cov_err, correction, rel_err;
 	TH1D *htmpy;	
@@ -576,6 +708,8 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
 	if(r){
     fcovcm = new TF1(Form("MaxThetaCoverageCm_%s",rname.c_str()),ThetaCoverage,0,180,2);
 	  fcovcm->SetParameters(2*PI*D2R,1);
+		fcovcm->SetLineStyle(2);
+		fcovcm->SetLineWidth(1);			  
 		coveragelist->Add(fcovcm);
 			
 		for(int i=1;i<=hcovcm->GetNbinsX();i++){
@@ -618,7 +752,7 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
 	gStyle->SetOptStat(0);
 	GetRid("SharcAcceptanceCurves");	
 	TCanvas *c = new TCanvas("SharcAcceptanceCurves","SharcAcceptanceCurves");
-	TLegend *leglab = new TLegend(0.7,0.7,0.9,0.9);
+	TLegend *leglab = new TLegend(0.7,0.7,0.97,0.9);
 	leglab->AddEntry(fcovlab,"Full phi coverage","lp");
 	leglab->AddEntry(hcovlab,"Sharc coverage","lp");	
 		
@@ -633,7 +767,7 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
 	hcorlab->Draw();		
 	
 	if(r){
-		TLegend *legcm = new TLegend(0.7,0.7,0.9,0.9);
+		TLegend *legcm = new TLegend(0.7,0.7,0.97,0.9);
 		legcm->AddEntry(fcovcm,"Full phi coverage","lp");
 		legcm->AddEntry(hcovcm,"Sharc coverage","lp");		
 
@@ -942,22 +1076,25 @@ int TSharcAnalysis::BadStrip(int det, int fs, int bs){
 		}
 		
 	 	coveragelist = new TList();
- 		int maxstrips = 0;		
+ 		int maxstrips = 0, fsmax, bsmax;		
 		for(int dd=5; dd<=16; dd++){
-			maxstrips+=GetFrontStrips(dd)+GetBackStrips(dd);
+			fsmax = GetFrontStrips(dd);
+			bsmax = GetBackStrips(dd);
+			maxstrips+=fsmax+bsmax;
+			
 			GetRid(Form("SharcHitPattern_Det%02i",dd));
-			h[dd-5] = new TH2F(Form("SharcHitPattern_Det%02i",dd),Form("SharcHitPattern_Det%02i; Back Strip; Front Strip",dd),48,0,48,24,0,24);
+			h[dd-5] = new TH2F(Form("SharcHitPattern_Det%02i",dd),Form("SharcHitPattern_Det%02i; Back Strip; Front Strip",dd),bsmax,0,bsmax,fsmax,0,fsmax);
 			coveragelist->Add(h[dd-5]);
 						
-			for(int ff=0; ff<GetFrontStrips(dd); ff++){
+			for(int ff=0; ff<fsmax; ff++){
 				if(badfrontstrip[dd-1][ff])
 					continue;
 				
-				for(int bb=0; bb<GetBackStrips(dd); bb++){
+				for(int bb=0; bb<bsmax; bb++){
 					if(badbackstrip[dd-1][bb])
 						continue;					
 				
-					h[dd-5]->Fill(bb,ff,1); 
+					h[dd-5]->Fill(bb,ff,1); // omega weight?
 				}
 			}
 		}			
@@ -1058,13 +1195,27 @@ void TSharcAnalysis::Print(Option_t *opt) {
 	printf("\n\n* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *");
 	printf("\n\n\t____TSharcAnalysis____");
 	
+	int fs, bs;
+	double fp, bp, dt, ddt;
+	std::string punit;
 	if(strcmp(opt,"all")==0){
 		printf("\n\n\tSHARC configuration table :-");
 		printf("\n\n DET : FS / pitch : BS / pitch : DEL[um] : DEL[dead][um] : PAD[um] : PAD[dead][um] \n");
 		for(int det=1; det<=16; det++){
-		
-			printf("\n%4i %4i%5.1f[mm]%4i%5.1f%s%9.2f%10.2f",det,frontstrips[det-1],frontpitches[det-1],
-				backstrips[det-1],backpitches[det-1],det<4||det>12?"[rad]":"[mm] ",DELthicknesses[det-1],DELdeadlayers[det-1]);
+			fs = frontstrips[det-1];
+			fp = frontpitches[det-1];
+			bs = backstrips[det-1];
+			bp = backpitches[det-1];
+			punit.assign("[mm] ");			
+			if(det<5 || det>12){
+				//printf("\n det = %i bp = %.3f",det,bp);
+				//bp*=R2D;
+				punit.assign("[deg]");
+			}
+			dt = DELthicknesses[det-1];
+			ddt = DELdeadlayers[det-1];
+			
+			printf("\n%4i %4i%5.1f[mm]%4i%5.1f%s%9.2f%10.2f",det,fs,fp,bs,bp,punit.c_str(),dt,ddt);
 			if(det>4 && det<=8)
 				printf("%15.2f%10.2f",PADthicknesses[det-1],PADdeadlayers[det-1]);
 		}
