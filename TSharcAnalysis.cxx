@@ -999,7 +999,7 @@ TH1D *TSharcAnalysis::SimulateAngDist(const char *sname, double &cntres, double 
 	if(str.find(".txt")!=std::string::npos)
 		infile.open(str.c_str());
 	else
-		infile.open(Form("%s/Fresco%s.txt",SHCDIR,sname));
+		infile.open(Form("%s/FrescoFiles/Fresco%s.txt",SHCDIR,sname));
   TH1D *hsigma = new TH1D(sname,Form("%s; Theta Cm [deg.]; Differential Cross Section [mb/sr]",sname),180,0,180);
   hsigma->SetLineColor(kRed);
   hsigma->Sumw2();
