@@ -39,6 +39,8 @@ TVector3 TSharcAnalysis::position_error						;
 double TSharcAnalysis::targetthickness            = 0.0; // THIS IS TRUE FOR 94Sr (2013) AND 95,96Sr (2014)   
 double TSharcAnalysis::targetradius               = 2000; 
 std::string TSharcAnalysis::targmat								= "";
+double TSharcAnalysis::frac_targ                  = 0.5; 
+
 // strips and acceptances
 TReaction *TSharcAnalysis::reaction 							= 0;
 TList *TSharcAnalysis::coveragelist 							= 0;
@@ -207,14 +209,14 @@ double TSharcAnalysis::GetReconstructedEnergy(TVector3 position, int det, double
 }
 
 
-std::vector<double> TSharcAnalysis::GetMeasuredEnergy(TVector3 position, int det, double ekin, char ion, Option_t *opt, double edel){
+std::vector<double> TSharcAnalysis::GetMeasuredEnergy(TVector3 position, int det, double ekin, char ion, std::string opt, double edel){
 
   std::vector<double> Emeas;
   // INITIALISE TO CORRECT SIZE TO PREVENT SEG FAULTS
 	Emeas.push_back(0.0);
 	Emeas.push_back(0.0);
   
-	if(!targmat.size() && strcmp(opt,"no_target")!=0){
+	if(!targmat.size() && opt.find("no_target")!=npos){
 		printf("\n\tError :  Target Material Must Be Set!\n\n\n");
 		return Emeas;
 	}
@@ -226,11 +228,17 @@ std::vector<double> TSharcAnalysis::GetMeasuredEnergy(TVector3 position, int det
     return Emeas;
 
 	// use options flag to remove target or deadlayer energy loss 
-  bool no_target = false, no_deadlayer = false;
-  if(strcmp(opt,"no_target")==0)
+  bool no_target = false, no_deadlayer = false, use_frac_targ = false;
+
+  if(opt.find("no_target")!=npos)
     no_target = true;
-  else if(strcmp(opt,"no_deadlayer")==0)
-    no_deadlayer = true;
+  else if(opt.find("frac_targ")!=npos)
+    use_frac_targ = true;    
+  else if(opt.find("rand_frac_targ")!=npos)
+    frac_targ = gRandom->Uniform();   
+    
+  if(opt.find("no_deadlayer")!=npos)
+    no_deadlayer = true;    
 
   double theta, phi;
   theta = position.Theta();
@@ -242,8 +250,13 @@ std::vector<double> TSharcAnalysis::GetMeasuredEnergy(TVector3 position, int det
   // adjust thicknesses of insensitive regions so that their energy loss effects can be switched on and off
   if(no_target)
        dist_target = 0.0;
-  else dist_target = GetTargetThickness(theta,phi); 
-  
+  else{
+ 		if(use_frac_targ) 
+    	dist_target = GetTargetThickness(theta,phi,frac_targ); 
+    else
+			dist_target = GetTargetThickness(theta,phi);
+	}
+	  
   if(no_deadlayer){
       dist_deadlayer    = 0.0; 
       dist_pdeadlayer   = 0.0;  
@@ -284,8 +297,7 @@ std::vector<double> TSharcAnalysis::GetMeasuredEnergy(TVector3 position, int det
   return Emeas;
 }
 
-
-TList *TSharcAnalysis::SimulateMeasurement(TReaction *r, Bool_t use_badstrips){
+TList *TSharcAnalysis::SimulateMeasurement(TReaction *r, Int_t resolution, Bool_t use_badstrips){
 	TList *list = new TList;
 
 	if(!targmat.size()){
@@ -297,14 +309,23 @@ TList *TSharcAnalysis::SimulateMeasurement(TReaction *r, Bool_t use_badstrips){
 		printf("\n\tWarning :  Bad strips can not be used as they have not been set.\n\n");
 		use_badstrips = false;
 	}
-		
+
+	Double_t Exc = r->GetExc()*1e3; // excitation energy in keV		
+	double targ_tmp = frac_targ;	
+	if(resolution<=0)
+		resolution = 1;
+				
 	GetRid("ReconstructedKinematics");
-	TH2F *hkinr = new TH2F("ReconstructedKinematics",Form("Reconstructed SHARC Kinematics for %s; #theta_{LAB} [#circ]; Measured Energy [keV]",r->GetNameFull()),180,0,180,300,0,30000);
+	TH2F *hkinr = new TH2F("ReconstructedKinematics",Form("Reconstructed SHARC Kinematics for %s; #theta_{LAB} [#circ]; Reconstructed E_{kin} [keV]",r->GetNameFull()),180,0,180,300,0,30000);
 	list->Add(hkinr);	
 	
-	GetRid("ReconstructedExcitation");
-	TH2F *hexcr = new TH2F("ReconstructedExcitation",Form("Reconstructed SHARC Exciation Energy for %s; #theta_{LAB} [#circ]; Measured Energy [keV]",r->GetNameFull()),180,0,180,1000,r->GetExc()-500,r->GetExc()+500);
-	list->Add(hexcr);		
+	GetRid("ReconstructedExcitationLab");
+	TH2F *hexcr_lab = new TH2F("ReconstructedExcitationLab",Form("Reconstructed SHARC Exciation Energy for %s; #theta_{LAB} [#circ]; Reconstructed E_{exc} [keV]",r->GetNameFull()),180,0,180,1000,Exc-500,Exc+500);
+	list->Add(hexcr_lab);		
+	
+	GetRid("ReconstructedExcitationCm");
+	TH2F *hexcr_cm = new TH2F("ReconstructedExcitationCm",Form("Reconstructed SHARC Exciation Energy for %s; #theta_{CM} [#circ]; Reconstructed E_{exc} [keV]",r->GetNameFull()),180,0,180,1000,Exc-500,Exc+500);
+	list->Add(hexcr_cm);			
 	
 	GetRid("Kinematics");
 	TH2F *hkin = new TH2F("Kinematics",Form("Simulated SHARC Kinematics for %s; #theta_{LAB} [#circ]; Measured Energy [keV]",r->GetNameFull()),180,0,180,300,0,30000);
@@ -322,24 +343,29 @@ TList *TSharcAnalysis::SimulateMeasurement(TReaction *r, Bool_t use_badstrips){
 	TH2F *hpid = new TH2F("PID",Form("Simulated SHARC PID for %s; Pad Energy [keV]; #Delta Energy [keV]",r->GetNameFull()),300,0,30000,100,0,10000);
 	list->Add(hpid);
 
-	Double_t edel_max = 25e3; // pre-amplifier saturates at 25 MeV
+	Double_t edel_min = 1000.0+200.0; // detector threshold + approx peak width
+	Double_t edel_max = 25000.0; // pre-amplifier saturates at 25 MeV
 	Double_t thmax = r->GetThetaMax(2);
 	std::string ion_name = r->GetIonName(2); // get name of ejectile nucleus
 	char ion = ion_name.at(ion_name.length()-1);
 
 	TVector3 pos;
 	std::vector<double> emeas;
-	Double_t ekin, edel, epad, etot, theta_lab, omega, ekinr, excr;
-	Int_t bsmax, fsmax;
+	Double_t ekin, edel, epad, etot, theta_lab, omega, ekinr, excr, theta_cm;
+	Double_t ebeam_targ;
+	Double_t thlab_min=180.0, thlab_max=0.0, thcm_min=180.0, thcm_max=0.0;
+	Int_t bsmax, fsmax, nmax = resolution;
 	
 	TH2F *hhit_del[16], *hhit_pad[16], *hdet_pid[16];
 	
 	for(int det=5; det<=16; det++){
-		if(GetPosition(det,0,0).Theta()>=thmax) // quick angle check to speed up
-			continue;
-			
+
 		bsmax = GetBackStrips(det);
 		fsmax = GetFrontStrips(det);	
+		
+		// quick check to see if this detector is outside reaction angular range		
+		if(GetPosition(det,0,0).Theta()>=thmax && GetPosition(det,0,bsmax).Theta()>=thmax) // quick angle check to speed up
+			continue;		
 		
 		GetRid(Form("HitPatternDel_Det%i",det));		
 		GetRid(Form("HitPatternPad_Det%i",det));		
@@ -356,45 +382,76 @@ TList *TSharcAnalysis::SimulateMeasurement(TReaction *r, Bool_t use_badstrips){
 			for(int bs=0; bs<bsmax; bs++){
 			
 				if(use_badstrips && BadStrip(det,-1,bs))
-					continue;			
-					
-				pos = GetPosition(det,fs,bs);
-				theta_lab = pos.Theta();
-				
-				if(theta_lab>=thmax)
-					continue;
-					
-				ekin = r->GetTLab(theta_lab,2)*1e3;
-				emeas = GetMeasuredEnergy(pos,det,ekin,ion);
-				edel = emeas.at(0);
-				if(edel>edel_max)
-					edel=edel_max;
-				epad = emeas.at(1);
-				etot=edel+epad;
-				
-			//	printf("\n[%2i,%2i,%2i]\t ekin = %5.2f keV\t etot = %5.2f keV [%5.2f+%5.2f]",det,fs,bs,ekin,etot,edel,epad);
-				omega = GetSolidAngle(det,fs,bs); // weight each pixel according to solid angle
-	
-				hhit_del[det-1]->Fill(bs,fs,edel);
-					
-				if(epad){
-					hkin_pad->Fill(theta_lab*R2D,epad,omega);				
-					hhit_pad[det-1]->Fill(bs,fs,epad);
-					hdet_pid[det-1]->Fill(epad,edel,omega);	
-					
-					if(det>=5 && det<=8)		// only downstream box			
-						hpid->Fill(epad,edel,omega);	
-				}
-				
-				hkin_del->Fill(theta_lab*R2D,edel,omega);
+						continue;			
 
-				hkin->Fill(theta_lab*R2D,etot,omega);
+				pos = GetPosition(det,fs,bs);				
+				theta_lab = pos.Theta(); // pixel center
+
+				if(theta_lab>=thmax)
+					continue;					
+														
+				for(int n=0; n<nmax; n++){ // randomize nmax hits over each pixel
+										
+					if(nmax>1){
+						frac_targ = gRandom->Uniform();		
+						// approximate the reaction as unaffected by the small target energy loss
+						// 	MUCH, MUCH FASTER
+				//		ebeam_targ = GetBeamEnergyInTarget(r->GetIonName(0),ebeam,frac_targ);																			
+				//		r->SetBeamEnergy(ebeam_targ);
+						
+						theta_lab = RandomizeThetaLab(det,fs,bs)*D2R;
+						ekin = r->GetTLab(theta_lab,2)*1e3;
+						emeas = GetMeasuredEnergy(pos,det,ekin,ion,"use_frac_targ");						
+					} else {				
+						ekin = r->GetTLab(theta_lab,2)*1e3;
+						emeas = GetMeasuredEnergy(pos,det,ekin,ion);
+					}
+					edel = emeas.at(0);			
 				
-				ekinr = GetReconstructedEnergy(pos,det,edel,epad,ion);
-				excr = r->GetExcEnergy(ekinr*1e-3,theta_lab,2)*1e3;
+					if(edel>edel_max)
+						edel=edel_max;
 				
-				hkinr->Fill(theta_lab*R2D,ekinr,omega);
-				hexcr->Fill(theta_lab*R2D,excr,omega);
+					epad = emeas.at(1);
+					etot=edel+epad;
+				
+				//	printf("\n[%2i,%2i,%2i]\t ekin = %5.2f keV\t etot = %5.2f keV [%5.2f+%5.2f]",det,fs,bs,ekin,etot,edel,epad);
+					omega = GetSolidAngle(det,fs,bs); // weight each pixel according to solid angle
+	
+					hhit_del[det-1]->Fill(bs,fs,edel);
+					
+					if(epad){
+						hkin_pad->Fill(theta_lab*R2D,epad,omega);				
+						hhit_pad[det-1]->Fill(bs,fs,epad);
+						hdet_pid[det-1]->Fill(epad,edel,omega);	
+					
+						if(det>=5 && det<=8)		// only downstream box			
+							hpid->Fill(epad,edel,omega);	
+					}
+				
+					hkin_del->Fill(theta_lab*R2D,edel,omega);
+					hkin->Fill(theta_lab*R2D,etot,omega);
+				
+					ekinr = GetReconstructedEnergy(pos,det,edel,epad,ion);
+					hkinr->Fill(theta_lab*R2D,ekinr,omega);
+					
+					if(edel<edel_min) // if it's below the threshold don't reconstruct exc
+						continue;		
+					
+					theta_cm = r->ConvertThetaLabToCm(theta_lab,2);
+					excr = r->GetExcEnergy(ekinr*1e-3,theta_lab,2)*1e3;											
+					
+					if(fabs(excr-Exc)<20.0){
+						if(theta_lab*R2D<thlab_min) thlab_min = theta_lab*R2D;
+						if(theta_lab*R2D>thlab_max) thlab_max = theta_lab*R2D;
+						if(theta_cm*R2D<thcm_min) thcm_min = theta_cm*R2D;
+						if(theta_cm*R2D>thcm_max) thcm_max = theta_cm*R2D;
+					}
+					
+					hexcr_lab->Fill(theta_lab*R2D,excr,omega);				
+					hexcr_cm->Fill(theta_cm*R2D,excr,omega);	
+					
+			//		printf("\n EXC = %.1f  ekinthry = %.1f  edel = %.1f  epad = %.1f  ekin = %.1f  exc = %.1f",r->GetExc()*1e3,ekin,emeas.at(0),emeas.at(1),ekinr,excr);  						
+				}
 			}
 		}
 		if(hhit_del[det-1]->GetEntries())
@@ -404,6 +461,30 @@ TList *TSharcAnalysis::SimulateMeasurement(TReaction *r, Bool_t use_badstrips){
 		if(hdet_pid[det-1]->GetEntries())
 			list->Add(hdet_pid[det-1]);			
 	}
+	
+	frac_targ = targ_tmp; // restore to original status
+
+	GetRid("AngularRange_Lab");	
+	TH1D *hthlab_rng = new TH1D("AngularRange_Lab",Form("Angular Range [Lab] For %s; #theta_{LAB} [#circ]",r->GetNameFull()),180,0,180);
+	list->Add(hthlab_rng);	
+	GetRid("AngularRange_Cm");			
+	TH1D *hthcm_rng = new TH1D("AngularRange_Cm",Form("Angular Range [Cm] For %s; #theta_{CM} [#circ]",r->GetNameFull()),180,0,180);
+	list->Add(hthcm_rng);		
+	
+	Double_t xlab, xcm;
+	for(int i=1; i<=180; i++){
+		xlab = hthlab_rng->GetBinCenter(i);
+		if(xlab>thlab_min && xlab<thlab_max)
+			hthlab_rng->SetBinContent(i,1.0);
+			
+		xcm = hthcm_rng->GetBinCenter(i);			
+		if(xcm>thcm_min && xcm<thcm_max)
+			hthcm_rng->SetBinContent(i,1.0);	
+	}
+	
+	printf("\n\n Effective angular range for this state is :-");	
+	printf("\n\t LAB :   %4.1f - %4.1f [deg]",thlab_min,thlab_max);
+	printf("\n\t CM  :   %4.1f - %4.1f [deg]\n\n",thcm_min,thcm_max);
 
 	return list;	
 }
@@ -518,15 +599,21 @@ double TSharcAnalysis::GetSolidAngle(int det, int fs, int bs){
 
 TH2F *TSharcAnalysis::GetSolidAngleMatrix(int det, Bool_t badstrips){
 
-	TH2F *h = new TH2F(Form("SolidAngles_Det%02i",det),Form("Solid Angles for Det%02i; Back Strip; Front Strip",det),48,0,48,24,0,24);
-
-	for(int bs=0; bs<48; bs++){
+	TH2F *h;
+	if(det<5 && det>16){
+		printf("\n\t Error :  Detector must be in range 5 - 16\n\n");
+		return h;
+	}
+	Int_t fsmax = GetFrontStrips(det), bsmax = GetBackStrips(det);
+	h = new TH2F(Form("SolidAngles_Det%02i",det),Form("Solid Angles for Det%02i; Back Strip; Front Strip; #Omega [msr]",det),bsmax,0,bsmax,fsmax,0,fsmax);
+	h->GetZaxis()->SetTitleOffset(1.5);
+	for(int bs=0; bs<bsmax; bs++){
 		if(badstrips && BadStrip(det,-1,bs))
 			continue;	
-		for(int fs=0; fs<24; fs++){
+		for(int fs=0; fs<fsmax; fs++){
 			if(badstrips && BadStrip(det,bs,-1))
 				continue;
-			h->SetBinContent(bs,fs,GetSolidAngle(det,fs,bs));
+			h->Fill(bs,fs,GetSolidAngle(det,fs,bs)*1e3);
 		}
 	}
 			
@@ -594,10 +681,10 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
 		
 	TVector3 pos, tmp_pos;
 	SetBadStrips(stripsfilename); 
-	double omega, thetalab;	
+	double omegalab, thetalab, omegacm, thetacm;	
 
 	TH2F *hcovlab2,*hcovcm2;
-	TH1D *hcovlab, *hcovcm, *hcorlab, *hcorcm;
+	TH1D *hcovlab, *hcovcm, *hcorlab, *hcorcm, *hefflab, *heffcm;
 		
 	GetRid("SharcCoverageLabVsRun");	
 	hcovlab2 = new TH2F("SharcCoverageLabVsRun","SharcCoverageLabMatrix",180,0,180,nmax,0,nmax);
@@ -609,6 +696,11 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
 	hcovlab->SetTitle(Form("%s; #theta_{LAB} [#circ]; Coverage [sr]",hcovlab->GetTitle()));	
 	coveragelist->Add(hcovlab);
 	
+	GetRid("SharcEfficiencyLab");	
+	hefflab = new TH1D("SharcEfficiencyLab","SharcEfficiencyLab",180,0,180);
+	hefflab->SetTitle(Form("%s; #theta_{LAB} [#circ]; Efficiency [%%]",hefflab->GetTitle()));	
+	coveragelist->Add(hefflab);	
+	
 	GetRid("SharcCorrectionLab");	
 	hcorlab = new TH1D("SharcCorrectionLab","SharcCorrectionLab",180,0,180);
 	hcorlab->SetTitle(Form("%s; #theta_{LAB} [#circ]; Correction factor ",hcorlab->GetTitle()));	
@@ -619,14 +711,22 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
 		reaction = r;
   	rname.assign(r->GetNameFull());	
 	
+		GetRid("SharcCoverageCmVsRun");		
 		hcovcm2 = new TH2F("SharcCoverageCmVsRun","SharcCoverageCmMatrix",180,0,180,nmax,0,nmax);
 		hcovcm2->SetTitle(Form("%s; #theta_{CM} [#circ]; Simulation Number",hcovcm2->GetTitle()));	
 		coveragelist->Add(hcovcm2);
 
+		GetRid("SharcCoverageCm");		
 		hcovcm = new TH1D("SharcCoverageCm",Form("SharcCoverageCm : %s",rname.c_str()),180,0,180);
 		hcovcm->SetTitle(Form("%s; #theta_{CM} [#circ]; Coverage [sr]",hcovcm->GetTitle()));	
 		coveragelist->Add(hcovcm);
 
+		GetRid("SharcEfficiencyCm");		
+		heffcm = new TH1D("SharcEfficiencyCm",Form("SharcEfficiencyCm : %s",rname.c_str()),180,0,180);
+		heffcm->SetTitle(Form("%s; #theta_{CM} [#circ]; Efficiency [%%] ",heffcm->GetTitle()));	
+		coveragelist->Add(heffcm);		
+		
+		GetRid("SharcCorrectionCm");				
 		hcorcm = new TH1D("SharcCorrectionCm",Form("SharcCorrectionCm : %s",rname.c_str()),180,0,180);
 		hcorcm->SetTitle(Form("%s; #theta_{CM} [#circ]; Correction factor ",hcorcm->GetTitle()));	
 		coveragelist->Add(hcorcm);		
@@ -634,6 +734,10 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
 	
 	TVector3 targ_pos = GetTargetPosition();
 
+	TGraph *gom;
+	if(r)
+		gom = r->OmegaVsTheta(0,180,2,false);
+		
 	double x,y,z;		
 	printf("\nMaking acceptance curve by randomizing hits..\n");
 	for(int n=0; n<nmax; n++){
@@ -659,12 +763,22 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
 					if(BadStrip(det,fs,-1))
 						continue;
 								
-			 		 omega = GetSolidAngle(det,fs,bs)/mmax;
+			 		 omegalab = GetSolidAngle(det,fs,bs)/mmax;
 			 		 // now randomize across the pixel to smooth out theta curve
 				 	 for(int m=0; m<mmax; m++){
 					 	thetalab = RandomizeThetaLab(det,fs,bs);
-					 	hcovlab2->Fill(thetalab,n,omega);	
-					 	if(r) hcovcm2->Fill(r->ConvertThetaLabToCm(thetalab*D2R,2)*R2D,n,omega);						 		 
+					 	hcovlab2->Fill(thetalab,n,omegalab);
+					 	
+					 	if(!r)
+					 		continue;
+					 		 	
+					 	thetacm = r->ConvertThetaLabToCm(thetalab*D2R,2)*R2D;
+					 	omegacm = omegalab;///gom->Eval((180-thetacm)*D2R);
+					 //	omegacm *= r->ConvertOmegaCmToLab(thetacm*D2R,2);	
+					//	omegacm *= r->ConvertOmegaLabToCm(thetacm*D2R,2);	
+//		val = pars[0]*TMath::Sin(thetalab);
+//		val *= reaction->ConvertOmegaLabToCm(thetalab,2);					 	
+					 	hcovcm2->Fill(thetacm,n,omegacm);						 		 
 					}
 				}
 			}		
@@ -676,11 +790,13 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
 	SetTargetPosition(targ_pos);
 			
   TF1 *fcovlab, *fcovcm; 
+	GetRid("MaxThetaCoverageLab");  
 	fcovlab = new TF1("MaxThetaCoverageLab",ThetaCoverage,0,180,2);
   fcovlab->SetParameters(2*PI*D2R,0);
   fcovlab->SetLineStyle(2);
   fcovlab->SetLineWidth(1);
-
+	coveragelist->Add(fcovlab);
+  
 	double theta_val, coverage, variance, cov_err, correction, rel_err;
 	TH1D *htmpy;	
 	
@@ -709,12 +825,17 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
 		hcovlab->SetBinError(i,cov_err);
 		
 		hcorlab->SetBinContent(i,correction);
-		hcorlab->SetBinError(i,rel_err * correction);	// same relative error				
+		hcorlab->SetBinError(i,rel_err * correction);	// same relative error	
+		
+		hefflab->SetBinContent(i,100.0/correction);
+		hefflab->SetBinError(i,rel_err * (100.0/correction));	// same relative error						
 	}
 	
 	if(r){
-    fcovcm = new TF1(Form("MaxThetaCoverageCm_%s",rname.c_str()),ThetaCoverage,0,180,2);
+		GetRid("MaxThetaCoverageCm");
+    fcovcm = new TF1("MaxThetaCoverageCm",ThetaCoverage,0,180,2);
 	  fcovcm->SetParameters(2*PI*D2R,1);
+//	  fcovcm->SetParameters(0.0715297,1);
 		fcovcm->SetLineStyle(2);
 		fcovcm->SetLineWidth(1);			  
 		coveragelist->Add(fcovcm);
@@ -744,7 +865,10 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
 			hcovcm->SetBinError(i,cov_err);
 		
 			hcorcm->SetBinContent(i,correction);
-			hcorcm->SetBinError(i,rel_err * correction);	// same relative error				
+			hcorcm->SetBinError(i,rel_err * correction);	// same relative error	
+			
+			heffcm->SetBinContent(i,100.0/correction);
+			heffcm->SetBinError(i,rel_err * (100.0/correction));	// same relative error							
 		}
 	}
 		
@@ -789,16 +913,6 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
 	}
 		
 	coveragelist->Add(c);
-			
-	/*	
-	TCanvas *c = new TCanvas;
-	
-	c->Divide(1,2);
-	c->cd(1);
-	hcovlab->Draw();
-	c->cd(2);
-	hcovlab2->Draw("colz");
-		*/
 		
 	return h;
 }
@@ -1071,11 +1185,23 @@ int TSharcAnalysis::BadStrip(int det, int fs, int bs){
 			while(infile.good()){
 				infile >> d >> f >> b;
 	
-				nbadstrips++;
-				if(d>0 && d<=16){
-					if(f>-1) badfrontstrip[d-1][f] = 1;
-					else if(b>-1) badbackstrip[d-1][b] = 1;
-				}else nbadstrips--;
+				if(d>4 && d<=16){
+					if(f==-1 && b==-1){ // remove entire detector
+						for(int j=0; j<24; j++){
+							badfrontstrip[d-1][j]   = 1;
+							badbackstrip[d-1][j]    = 1;		
+							badbackstrip[d-1][24+j] = 1;		
+						}					
+						if(d<13)	nbadstrips+=72; // number of strips in box
+						else    	nbadstrips+=40; // number of strips in Q
+					} else if(f>-1){ // remove front strip
+						 badfrontstrip[d-1][f] = 1;
+						 nbadstrips++;
+					} else if(b>-1){ // remove back strip
+						 badbackstrip[d-1][b] = 1;
+						nbadstrips++;						 
+					}					
+				}//else nbadstrips--;
 			}
 	 
    	}	else { 
@@ -1146,14 +1272,26 @@ double TSharcAnalysis::RandomizeThetaLab(int det, int fs, int bs){
 
 double TSharcAnalysis::ThetaCoverage(Double_t *x, Double_t *pars){
 	
-	Double_t val = pars[0]*TMath::Sin(D2R*x[0]);
+	Double_t val;
+	if(pars[1]==0)
+		val = pars[0]*TMath::Sin(D2R*x[0]);
   if(pars[1]==1){ // CM frame = 1
-     static TGraph *g;
-     if(!g){
-        g = reaction->OmegaVsTheta(0,180,2,false);    
-        coveragelist->Add(g);
-     }
-     val*=g->Eval(x[0]);
+		//Double_t thetalab = reaction->ConvertThetaCmToLab(D2R*x[0]);
+		//val = pars[0]*TMath::Sin(thetalab);	
+		//val *= reaction->ConvertOmegaLabToCm(thetalab,2);
+		
+		static TGraph *g;
+		if(!g){
+			g = reaction->OmegaVsTheta(0,180,2,false);   
+//			g->SetName("OmegaVsThetaCm"); 
+			coveragelist->Add(g);
+		}
+	//	val/=g->Eval(180-x[0]);		
+		
+		// 'wrong version' but it matches the histogram
+		val = pars[0]*TMath::Sin(D2R*x[0]);		
+		val*=g->Eval(x[0]);		
+		
   }
   return val;
 }

@@ -44,6 +44,7 @@ class TSharcAnalysis 	{
 					{return TSharc::GetPosition(det,fs,bs)+position_offset;}
 
 		static void SetTarget(double x=0.0, double y=0.0, double z=0.0, double thickness=0.0, const char *material="",double dx=0.0, double dy=0.0, double dz=0.0);
+		static void SetFracTarg(double frac) {frac_targ = frac;}
 		static void SetTargetPosition(TVector3 vec){ position_offset = vec; }		
 		static void SetTargetPositionError(TVector3 vec){ position_error = vec; }		
 		
@@ -123,16 +124,15 @@ class TSharcAnalysis 	{
     			{ return GetReconstructedEnergy(GetPosition(det,fs,bs),det,edel,epad,ion); } //!
     			
 		// takes ekin and returns edel and epad (NB detector thicknesses must be correct!)   
-    static std::vector<double> GetMeasuredEnergy(TVector3 pos, int det, double ekin, char ion='p', Option_t *opt="", double edel=-1.0);//!	
-    static std::vector<double> GetMeasuredEnergy(int det, int fs, int bs, double ekin, char ion='p', Option_t *opt="", double edel=-1.0)
+    static std::vector<double> GetMeasuredEnergy(TVector3 pos, int det, double ekin, char ion='p', std::string opt="", double edel=-1.0);//!	
+    static std::vector<double> GetMeasuredEnergy(int det, int fs, int bs, double ekin, char ion='p', std::string opt="", double edel=-1.0)
     			{return GetMeasuredEnergy(GetPosition(det,fs,bs),det,ekin,ion,opt,edel); } //!		 
     
-    static TList *SimulateMeasurement(TReaction *r, Bool_t use_badstrips=false);
+    static TList *SimulateMeasurement(TReaction *r, Int_t resolution=0, Bool_t use_badstrips=false);
     	
 		static void InitializeSRIMInputs();   //!
     static TSRIM *GetSRIM(char ion, std::string material); //!
     static TReaction *GetReaction(void) { return reaction; } //!
-
 
 	private: 
 
@@ -145,6 +145,8 @@ class TSharcAnalysis 	{
     static double targetthickness;   // microns
     static double targetradius;      // microns
     static std::string targmat;			 // material name
+    static double frac_targ;        // reaction position in target [fraction]
+
     static std::string badstripsfile;	// file containing bad strips
     static Bool_t resetbadstrips;
     static UInt_t nbadstrips;
