@@ -918,7 +918,7 @@ TH1D *TSharcAnalysis::SetAcceptance(int nmax, TReaction *r, const char *stripsfi
 }
 
 
-TH1D *TSharcAnalysis::RebinAcceptance(TH1D *h, int binsz){
+TH1D *TSharcAnalysis::RebinAcceptance(TH1D *h, int binsz, Bool_t verbose){
 
 	TH1D *hreb = new TH1D(Form("%s_%iDegBins",h->GetName(),binsz),"",180/(double)binsz,0,180);
 	hreb->SetTitle(Form("%s;%s;%s",h->GetTitle(),h->GetXaxis()->GetTitle(),h->GetYaxis()->GetTitle()));
@@ -926,7 +926,7 @@ TH1D *TSharcAnalysis::RebinAcceptance(TH1D *h, int binsz){
 	Double_t val, err, sumval, sumerr;
 	Int_t nval = 0, n = 0;
 	
-	printf("\n\tRebinning acceptance curve [%i deg. bins]\n",binsz);
+	if(verbose) printf("\n\tRebinning acceptance curve [%i deg. bins]\n",binsz);
 	
 	for(int i=1; i<=180; i++){
 	
@@ -943,7 +943,7 @@ TH1D *TSharcAnalysis::RebinAcceptance(TH1D *h, int binsz){
 		if(i%binsz==0){
 			n++;
 			if(nval){
-		  	printf("\n\t Bin %i. Theta = %.1f\t   content = %.3f +/- %.3f  [npts = %i]",n,(double)i-binsz*0.5,sumval/nval,sumerr/nval,nval);
+		  	if(verbose) printf("\n\t Bin %i. Theta = %.1f\t   content = %.3f +/- %.3f  [npts = %i]",n,(double)i-binsz*0.5,sumval/nval,sumerr/nval,nval);
 				hreb->SetBinContent(n,sumval/nval);
 				hreb->SetBinError(n,sumerr/nval);				
 			}
@@ -952,7 +952,7 @@ TH1D *TSharcAnalysis::RebinAcceptance(TH1D *h, int binsz){
 			sumerr = 0;		
 		}
 	}
-	printf("\n\n");
+	if(verbose) printf("\n\n");
 	
 	return hreb;			
 }
@@ -1150,8 +1150,11 @@ TList *TSharcAnalysis::GetAcceptanceList(TReaction *r, const char *stripsfile, I
 }
 
 
-void TSharcAnalysis::SetBadStrips(const char *stripsfilename){
-	badstripsfile.assign(stripsfilename);
+void TSharcAnalysis::SetBadStrips(std::string stripsfile){
+	if(stripsfile.find("$SAD/")!=npos)
+		stripsfile.assign(Form("%s/%s",SHCDIR,stripsfile.substr(5,stripsfile.length()-5).c_str()));
+
+	badstripsfile.assign(stripsfile);
 	resetbadstrips = true;
 	coveragelist = new TList();
 	BadStrip();

@@ -67,7 +67,7 @@ class TSharcAnalysis 	{
 		static TH1D *SetAcceptance(int nmax=10,TReaction *r=NULL,const char *stripsfilename="");
     static TList *GetAcceptanceList(TReaction *r=NULL,const char *stripsfile="",Int_t resolution=10); //! 
     static double RandomizeThetaLab(int det, int fs, int bs);//! 
-    static TH1D *RebinAcceptance(TH1D *h, int binsz); //! 
+    static TH1D *RebinAcceptance(TH1D *h, int binsz, Bool_t verbose=false); //! 
     static TH1D *MakeSin(Double_t binsz=1.0); //!
             
     static TH1D *SimulateAngDist(const char *sname, double &cntres, double &reserr, double t1=0.0, double t2=20.0, double counts=1e4, double cnterr=0); //!
@@ -77,7 +77,7 @@ class TSharcAnalysis 	{
     static int GetBackStrips(int det) {	  return backstrips[det-1];			}//!
            
     // bad strips
-    static void SetBadStrips(const char *stripsfile="");    
+    static void SetBadStrips(std::string stripsfile="");    
     static int BadStrip(int det=-1, int fs=-1, int bs=-1);//! 
 
     // thicknesses of detectors
