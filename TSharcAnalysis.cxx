@@ -16,6 +16,8 @@ TSRIM* TSharcAnalysis::p_in_targ									= 0;
 TSRIM* TSharcAnalysis::p_in_si  									= 0;
 TSRIM* TSharcAnalysis::d_in_targ									= 0;
 TSRIM* TSharcAnalysis::d_in_si  									= 0;
+TSRIM* TSharcAnalysis::t_in_targ									= 0;
+TSRIM* TSharcAnalysis::t_in_si  									= 0;
 TSRIM* TSharcAnalysis::c_in_targ									= 0;
 TSRIM* TSharcAnalysis::c_in_si  									= 0;
 TSRIM* TSharcAnalysis::a_in_targ									= 0;
@@ -124,6 +126,9 @@ void TSharcAnalysis::InitializeSRIMInputs()	{
 	d_in_targ  = new TSRIM(Form("d_in_%s.txt",targmat.c_str()),100e3,0,false);
 	d_in_si    = new TSRIM("d_in_si.txt",100e3,0,false);
 
+	t_in_targ  = new TSRIM(Form("t_in_%s.txt",targmat.c_str()),100e3,0,false);
+	t_in_si    = new TSRIM("t_in_si.txt",100e3,0,false);
+	
 	a_in_targ  = new TSRIM(Form("a_in_%s.txt",targmat.c_str()),200e3,0,false);
 	a_in_si    = new TSRIM("a_in_si.txt",200e3,0,false);
 
@@ -152,6 +157,13 @@ TSRIM *TSharcAnalysis::GetSRIM(char ion, std::string material){
         srim = d_in_targ;
       else if(material.find("si")==0)
         srim = d_in_si;
+      else printf("{TSharcAnalysis} Error: Material '%s' not recognised.\n",material.c_str());
+      break;
+    case 't':
+      if    (material.find("targ")==0)
+        srim = t_in_targ;
+      else if(material.find("si")==0)
+        srim = t_in_si;
       else printf("{TSharcAnalysis} Error: Material '%s' not recognised.\n",material.c_str());
       break;
     case 'c':
@@ -1178,7 +1190,7 @@ int TSharcAnalysis::BadStrip(int det, int fs, int bs){
 			}
 		}		
 		
-		ifstream infile;
+		std::ifstream infile;
     infile.open(badstripsfile.c_str());
     printf("\nTSharcAnalysis :  Bad Strips File '%s' will be used.. ",badstripsfile.c_str());
     if(infile.is_open()){
@@ -1393,6 +1405,8 @@ void TSharcAnalysis::Clear(Option_t *opt) {
 	p_in_si   = 0;
 	d_in_targ = 0;
 	d_in_si   = 0;
+	t_in_targ = 0;
+	t_in_si   = 0;	
 	c_in_targ = 0;
 	c_in_si   = 0;
 	a_in_targ = 0;
