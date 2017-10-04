@@ -9,9 +9,9 @@
 #include <TCanvas.h>
 #include <TH2F.h>
 
-#include "/Users/steffencruz/Desktop/Steffen/Work/PhD/TRIUMF/CodesAndTools/GRSISort/include/TSRIM.h"
-#include "/Users/steffencruz/Desktop/Steffen/Work/PhD/TRIUMF/CodesAndTools/GRSISort/include/TSharc.h"
-#include "/Users/steffencruz/Desktop/Steffen/Work/PhD/TRIUMF/CodesAndTools/GRSISort/include/TReaction.h"
+#include "TSRIM.h"
+#include "TSharc.h"
+#include "TReaction.h"
 
 #ifndef PI
 #define PI                       (TMath::Pi())
