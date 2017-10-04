@@ -175,6 +175,8 @@ class TSharcAnalysis 	{
 		static TSRIM *d_in_si;  //!
 		static TSRIM *c_in_targ;   //!
 		static TSRIM *c_in_si;   //!
+		static TSRIM *t_in_targ;   //!
+		static TSRIM *t_in_si;   //!		
 		static TSRIM *a_in_targ;  //! 
 		static TSRIM *a_in_si;   //!
 		static TSRIM *beam_in_targ;  //!

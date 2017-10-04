@@ -1,8 +1,6 @@
 
 OBJECTS = TSharcAnalysis.o TSharcAnalysisDict.o 
 
-GRSISYS=/Users/steffencruz/Desktop/Steffen/Work/PhD/TRIUMF/CodesAndTools/GRSISort
-
 CFLAGS += -I$(GRSISYS)/include -L$(GRSISYS)/libraries -fPIC -I $(GRSISYS)/include/
 
 #COMP_STRING="Now Compling "
